@@ -2,21 +2,30 @@ package com.namazvakti.app.alarm
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.ContentResolver
 import android.content.Context
 import android.media.AudioAttributes
-import android.media.RingtoneManager
+import android.net.Uri
+import com.namazvakti.app.R
 
 object NotificationChannels {
-    const val CHANNEL_WARNINGS = "prayer_warnings"
+    private const val LEGACY_CHANNEL_WARNINGS = "prayer_warnings"
+    const val CHANNEL_WARNINGS = "prayer_warnings_v2"
     const val CHANNEL_ADHAN = "adhan_playback"
     const val CHANNEL_AUTO_SILENT = "auto_silent_status"
+
+    fun warningSoundUri(context: Context): Uri =
+        Uri.parse("${ContentResolver.SCHEME_ANDROID_RESOURCE}://${context.packageName}/${R.raw.uyari_tonu}")
 
     fun createAll(context: Context) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
 
-        val warningSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        // Remove legacy channel so upgraded installs pick up the new bundled custom chime
+        runCatching { nm.deleteNotificationChannel(LEGACY_CHANNEL_WARNINGS) }
+
+        val warningSound = warningSoundUri(context)
         val warningAttrs = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
 

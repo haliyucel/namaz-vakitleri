@@ -331,12 +331,15 @@ private fun NamazMainApp(activity: ComponentActivity, app: NamazApp) {
         val notif = NotificationCompat.Builder(activity, NotificationChannels.CHANNEL_WARNINGS)
             .setSmallIcon(R.drawable.ic_stat_mosque)
             .setContentTitle("Test: Ezan Vaktine 15 Dakika Kaldı")
-            .setContentText("Uyarı bildirimleri sorunsuz çalışıyor.")
+            .setContentText("Özel uyarı tonu ve bildirimler sorunsuz çalışıyor.")
+            .setSound(NotificationChannels.warningSoundUri(activity))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .build()
         runCatching {
-            NotificationManagerCompat.from(activity).notify(7777, notif)
+            val nm = NotificationManagerCompat.from(activity)
+            nm.cancel(7777)
+            nm.notify(7777, notif)
         }
         Toast.makeText(activity, "Test uyarısı gönderildi.", Toast.LENGTH_SHORT).show()
     }

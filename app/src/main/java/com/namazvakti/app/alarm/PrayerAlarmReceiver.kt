@@ -127,6 +127,7 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
             .setContentTitle(title)
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setSound(NotificationChannels.warningSoundUri(context))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setAutoCancel(true)
