@@ -58,13 +58,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.namazvakti.app.BuildConfig
 import com.namazvakti.app.alarm.AutoSilentStatus
 import com.namazvakti.app.model.AppSettings
 import com.namazvakti.app.model.PrayerDay
 import com.namazvakti.app.model.PrayerType
 import com.namazvakti.app.update.GitHubUpdateManager
-import com.namazvakti.app.update.RemoteReleaseInfo
+import com.namazvakti.app.update.UpdateUiState
+import kotlin.math.roundToInt
 import com.namazvakti.app.ui.theme.AmberWarn
 import com.namazvakti.app.ui.theme.EmeraldDeep
 import com.namazvakti.app.ui.theme.EmeraldLight
@@ -94,10 +94,10 @@ fun PrayerTimesScreen(
     currentlyPlayingAdhan: PrayerType?,
     autoSilentStatus: AutoSilentStatus,
     permissions: PermissionSummary,
-    availableUpdate: RemoteReleaseInfo?,
+    updateState: UpdateUiState,
     onOpenLocationPicker: () -> Unit,
     onRefresh: () -> Unit,
-    onOpenUpdateDialog: () -> Unit,
+    onInstallDownloadedUpdate: () -> Unit,
     onStopAdhan: () -> Unit,
     onManualRestoreSound: () -> Unit,
     onRequestNotificationPerm: () -> Unit,
@@ -123,6 +123,36 @@ fun PrayerTimesScreen(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        // 0. Top Developer Header
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Namaz Vakitleri",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Text(
+                        text = "Yapımcı: ${GitHubUpdateManager.DEVELOPER_NAME}",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                    )
+                }
+            }
+        }
+
         // 1. Hero Card
         item {
             HeroCountdownCard(
@@ -136,42 +166,71 @@ fun PrayerTimesScreen(
             )
         }
 
-        // 1.5 Available GitHub Update Banner
-        if (availableUpdate != null) {
+        // 1.5 Automatic Update Download / Install Banner (no GitHub branding)
+        val pendingRelease = updateState.availableRelease
+        if (pendingRelease != null && (updateState.isDownloading || updateState.downloadedApkPath != null)) {
             item {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
                     border = BorderStroke(1.dp, GoldAccent),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.clickable { onOpenUpdateDialog() }
+                    shape = RoundedCornerShape(16.dp)
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Rounded.SystemUpdate,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Yeni Güncelleme Hazır (${availableUpdate.tagName})",
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Rounded.SystemUpdate,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer
                             )
-                            Text(
-                                text = "GitHub üzerinden indirmek ve kurmak için dokunun",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)
-                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (updateState.isDownloading) {
+                                        "Güncelleme İndiriliyor (${pendingRelease.tagName})"
+                                    } else {
+                                        "Güncelleme Kuruluma Hazır (${pendingRelease.tagName})"
+                                    },
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                                val sub = if (updateState.isDownloading) {
+                                    val p = updateState.progressFraction
+                                    if (p != null) {
+                                        "Otomatik indiriliyor • %${(p * 100f).roundToInt()}"
+                                    } else {
+                                        "Otomatik indiriliyor..."
+                                    }
+                                } else {
+                                    "Kurulumu tamamlamak için dokunun"
+                                }
+                                Text(
+                                    text = sub,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)
+                                )
+                            }
+                            if (!updateState.isDownloading && updateState.downloadedApkPath != null) {
+                                FilledTonalButton(onClick = onInstallDownloadedUpdate) {
+                                    Text("Yükle")
+                                }
+                            }
                         }
-                        FilledTonalButton(onClick = onOpenUpdateDialog) {
-                            Text("Güncelle")
+                        if (updateState.isDownloading) {
+                            val p = updateState.progressFraction
+                            if (p != null) {
+                                LinearProgressIndicator(
+                                    progress = { p },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            } else {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            }
                         }
                     }
                 }
@@ -415,12 +474,6 @@ fun PrayerTimesScreen(
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "Yapımcı: ${GitHubUpdateManager.DEVELOPER_NAME} • v${BuildConfig.VERSION_NAME}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                )
             }
         }
     }

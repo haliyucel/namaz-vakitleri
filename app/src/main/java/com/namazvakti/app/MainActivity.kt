@@ -14,15 +14,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccessTime
 import androidx.compose.material.icons.rounded.Explore
@@ -31,8 +24,6 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -51,7 +42,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -71,15 +61,13 @@ import com.namazvakti.app.ui.screens.QiblaScreen
 import com.namazvakti.app.ui.screens.SettingsScreen
 import com.namazvakti.app.ui.theme.NamazTheme
 import com.namazvakti.app.update.GitHubUpdateManager
-import com.namazvakti.app.update.RemoteReleaseInfo
 import com.namazvakti.app.update.UpdateCheckResult
 import com.namazvakti.app.update.UpdateUiState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.io.File
 import java.time.LocalDate
 import java.time.ZoneId
-import java.util.Locale
-import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
 
@@ -119,82 +107,33 @@ private fun NamazMainApp(activity: ComponentActivity, app: NamazApp) {
     var gpsError by remember { mutableStateOf<String?>(null) }
 
     var updateState by remember { mutableStateOf(UpdateUiState()) }
-    var showUpdateDialog by remember { mutableStateOf(false) }
+    var showInstallPermissionDialog by remember { mutableStateOf(false) }
 
-    fun openExternalUrl(url: String) {
-        runCatching {
-            activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-        }
-    }
-
-    fun checkGitHubUpdate(silent: Boolean) {
-        if (updateState.isChecking || updateState.isDownloading) return
-        scope.launch {
-            updateState = updateState.copy(
-                isChecking = true,
-                statusMessage = if (silent) updateState.statusMessage else "GitHub'dan yeni sürüm kontrol ediliyor..."
-            )
-            when (val res = GitHubUpdateManager.checkForUpdate(BuildConfig.VERSION_NAME)) {
-                is UpdateCheckResult.UpdateAvailable -> {
-                    updateState = updateState.copy(
-                        isChecking = false,
-                        availableRelease = res.release,
-                        statusMessage = "Yeni sürüm bulundu: ${res.release.tagName}"
-                    )
-                    if (!silent) {
-                        showUpdateDialog = true
-                    }
-                }
-                is UpdateCheckResult.UpToDate -> {
-                    updateState = updateState.copy(
-                        isChecking = false,
-                        availableRelease = null,
-                        statusMessage = if (silent) null else "Uygulamanız güncel (v${res.currentVersion})."
-                    )
-                    if (!silent) {
-                        Toast.makeText(
-                            activity,
-                            "Uygulamanız güncel (v${res.currentVersion})",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
-                is UpdateCheckResult.Error -> {
-                    updateState = updateState.copy(
-                        isChecking = false,
-                        statusMessage = if (silent) updateState.statusMessage else res.message
-                    )
-                    if (!silent) {
-                        Toast.makeText(activity, res.message, Toast.LENGTH_LONG).show()
-                    }
-                }
-            }
-        }
-    }
-
-    fun downloadAndInstallUpdate(release: RemoteReleaseInfo) {
-        if (updateState.isDownloading) return
+    fun installDownloadedApk(apkPath: String) {
+        val file = File(apkPath)
+        if (!file.exists()) return
         if (!GitHubUpdateManager.canInstallPackages(activity)) {
-            Toast.makeText(
-                activity,
-                "APK kurulumu için bu uygulamaya yükleme izni verin ve tekrar deneyin.",
-                Toast.LENGTH_LONG
-            ).show()
-            runCatching {
-                activity.startActivity(GitHubUpdateManager.createInstallPermissionIntent(activity))
-            }
+            updateState = updateState.copy(awaitingInstallPermission = true)
+            showInstallPermissionDialog = true
             return
         }
-        if (release.apkDownloadUrl.isNullOrBlank()) {
-            openExternalUrl(release.htmlUrl)
-            return
+        updateState = updateState.copy(awaitingInstallPermission = false)
+        showInstallPermissionDialog = false
+        runCatching {
+            GitHubUpdateManager.launchApkInstaller(activity, file)
         }
-        scope.launch {
-            updateState = updateState.copy(
+    }
+
+    // Automatic silent background update check & download on startup (hidden, no GitHub UI)
+    LaunchedEffect(Unit) {
+        val check = GitHubUpdateManager.checkForUpdate(BuildConfig.VERSION_NAME)
+        if (check is UpdateCheckResult.UpdateAvailable && !check.release.apkDownloadUrl.isNullOrBlank()) {
+            val release = check.release
+            updateState = UpdateUiState(
+                availableRelease = release,
                 isDownloading = true,
                 downloadedBytes = 0L,
-                totalBytes = release.apkSizeBytes,
-                statusMessage = "Güncelleme indiriliyor (${release.tagName})..."
+                totalBytes = release.apkSizeBytes
             )
             val result = GitHubUpdateManager.downloadApk(activity, release) { dl, total ->
                 updateState = updateState.copy(downloadedBytes = dl, totalBytes = total)
@@ -202,32 +141,14 @@ private fun NamazMainApp(activity: ComponentActivity, app: NamazApp) {
             result.onSuccess { apkFile ->
                 updateState = updateState.copy(
                     isDownloading = false,
-                    statusMessage = "İndirme tamamlandı, kurulum ekranı açılıyor..."
+                    downloadedApkPath = apkFile.absolutePath
                 )
-                showUpdateDialog = false
-                runCatching {
-                    GitHubUpdateManager.launchApkInstaller(activity, apkFile)
-                }.onFailure { err ->
-                    Toast.makeText(
-                        activity,
-                        "Kurulum başlatılamadı: ${err.localizedMessage ?: "Bilinmeyen hata"}",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            }.onFailure { err ->
-                val msg = err.message ?: "Güncelleme indirilemedi."
-                updateState = updateState.copy(
-                    isDownloading = false,
-                    statusMessage = msg
-                )
-                Toast.makeText(activity, msg, Toast.LENGTH_LONG).show()
+                installDownloadedApk(apkFile.absolutePath)
+            }.onFailure {
+                // Fail silently in background
+                updateState = UpdateUiState()
             }
         }
-    }
-
-    // Silent background update check on startup
-    LaunchedEffect(Unit) {
-        checkGitHubUpdate(silent = true)
     }
 
     // Live permissions state refreshed on resume
@@ -251,6 +172,13 @@ private fun NamazMainApp(activity: ComponentActivity, app: NamazApp) {
             if (event == Lifecycle.Event.ON_RESUME) {
                 permissions = readPermissions()
                 AutoSilentManager.syncState(activity)
+                val apkPath = updateState.downloadedApkPath
+                if (updateState.awaitingInstallPermission &&
+                    !apkPath.isNullOrBlank() &&
+                    GitHubUpdateManager.canInstallPackages(activity)
+                ) {
+                    installDownloadedApk(apkPath)
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -472,10 +400,12 @@ private fun NamazMainApp(activity: ComponentActivity, app: NamazApp) {
                     currentlyPlayingAdhan = playingAdhan,
                     autoSilentStatus = autoSilentStatus,
                     permissions = permissions,
-                    availableUpdate = updateState.availableRelease,
+                    updateState = updateState,
                     onOpenLocationPicker = { selectedTab = AppTab.LOCATION.ordinal },
                     onRefresh = { syncOnlinePrayers(forceRefresh = true) },
-                    onOpenUpdateDialog = { showUpdateDialog = true },
+                    onInstallDownloadedUpdate = {
+                        updateState.downloadedApkPath?.let { installDownloadedApk(it) }
+                    },
                     onStopAdhan = { AdhanPlaybackService.stop(activity) },
                     onManualRestoreSound = {
                         AutoSilentManager.restoreSoundMode(
@@ -513,7 +443,6 @@ private fun NamazMainApp(activity: ComponentActivity, app: NamazApp) {
                     settings = settings,
                     hasDndPermission = permissions.hasDndPolicy,
                     currentlyPlayingAdhan = playingAdhan,
-                    updateState = updateState,
                     onUpdateSettings = { updateAndReschedule(it) },
                     onPreviewAdhan = { prayer ->
                         AdhanPlaybackService.start(activity, prayer, isPreview = true)
@@ -521,103 +450,41 @@ private fun NamazMainApp(activity: ComponentActivity, app: NamazApp) {
                     onStopAdhan = { AdhanPlaybackService.stop(activity) },
                     onOpenDndSettings = { openDndSettings() },
                     onTestWarningNotification = { sendTestWarningNotification() },
-                    onTestAutoSilent15Sec = { testAutoSilent15Sec() },
-                    onCheckForUpdate = { checkGitHubUpdate(silent = false) },
-                    onOpenUpdateDialog = { showUpdateDialog = true },
-                    onOpenGitHubRepo = { openExternalUrl(GitHubUpdateManager.GITHUB_REPO_URL) }
+                    onTestAutoSilent15Sec = { testAutoSilent15Sec() }
                 )
             }
         }
     }
 
-    val releaseForDialog = updateState.availableRelease
-    if (showUpdateDialog && releaseForDialog != null) {
+    if (showInstallPermissionDialog && updateState.availableRelease != null) {
         AlertDialog(
-            onDismissRequest = {
-                if (!updateState.isDownloading) showUpdateDialog = false
-            },
+            onDismissRequest = { showInstallPermissionDialog = false },
             title = {
                 Text(
-                    text = "Yeni Güncelleme (${releaseForDialog.tagName})",
+                    text = "Güncelleme Hazır (${updateState.availableRelease!!.tagName})",
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    Text(
-                        text = releaseForDialog.title,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = "Mevcut: v${BuildConfig.VERSION_NAME} → Yeni: ${releaseForDialog.tagName}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    if (releaseForDialog.apkSizeBytes > 0L) {
-                        val sizeMb = releaseForDialog.apkSizeBytes / (1024.0 * 1024.0)
-                        Text(
-                            text = String.format(Locale.US, "Dosya boyutu: %.1f MB", sizeMb),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    if (releaseForDialog.releaseNotes.isNotBlank()) {
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            text = releaseForDialog.releaseNotes,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                    if (updateState.isDownloading) {
-                        Spacer(Modifier.height(12.dp))
-                        val p = updateState.progressFraction
-                        if (p != null) {
-                            LinearProgressIndicator(
-                                progress = { p },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                text = String.format(
-                                    Locale.US,
-                                    "İndiriliyor: %%%d (%.1f / %.1f MB)",
-                                    (p * 100f).roundToInt(),
-                                    updateState.downloadedBytes / (1024.0 * 1024.0),
-                                    updateState.totalBytes / (1024.0 * 1024.0)
-                                ),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        } else {
-                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                        }
-                    }
-                }
+                Text(
+                    "Yeni sürüm otomatik indirildi. Kurulumu tamamlamak için uygulama yükleme iznini açmanız gerekiyor."
+                )
             },
             confirmButton = {
                 Button(
-                    onClick = { downloadAndInstallUpdate(releaseForDialog) },
-                    enabled = !updateState.isDownloading
+                    onClick = {
+                        showInstallPermissionDialog = false
+                        runCatching {
+                            activity.startActivity(GitHubUpdateManager.createInstallPermissionIntent(activity))
+                        }
+                    }
                 ) {
-                    Text(if (updateState.isDownloading) "İndiriliyor..." else "İndir ve Kur")
+                    Text("İzin Ver ve Yükle")
                 }
             },
             dismissButton = {
-                if (!updateState.isDownloading) {
-                    Row {
-                        TextButton(onClick = { openExternalUrl(releaseForDialog.htmlUrl) }) {
-                            Text("GitHub'da Aç")
-                        }
-                        TextButton(onClick = { showUpdateDialog = false }) {
-                            Text("Sonra")
-                        }
-                    }
+                TextButton(onClick = { showInstallPermissionDialog = false }) {
+                    Text("Sonra")
                 }
             }
         )

@@ -21,24 +21,19 @@ import androidx.compose.material.icons.rounded.Calculate
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DoNotDisturbOn
 import androidx.compose.material.icons.rounded.NotificationsActive
-import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Stop
-import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.WarningAmber
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
@@ -51,14 +46,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.namazvakti.app.BuildConfig
 import com.namazvakti.app.model.AppSettings
 import com.namazvakti.app.model.CalculationMethod
 import com.namazvakti.app.model.PrayerType
 import com.namazvakti.app.ui.theme.AmberWarn
-import com.namazvakti.app.update.GitHubUpdateManager
-import com.namazvakti.app.update.UpdateUiState
-import java.util.Locale
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -67,16 +58,12 @@ fun SettingsScreen(
     settings: AppSettings,
     hasDndPermission: Boolean,
     currentlyPlayingAdhan: PrayerType?,
-    updateState: UpdateUiState,
     onUpdateSettings: ((AppSettings) -> AppSettings) -> Unit,
     onPreviewAdhan: (PrayerType) -> Unit,
     onStopAdhan: () -> Unit,
     onOpenDndSettings: () -> Unit,
     onTestWarningNotification: () -> Unit,
-    onTestAutoSilent15Sec: () -> Unit,
-    onCheckForUpdate: () -> Unit,
-    onOpenUpdateDialog: () -> Unit,
-    onOpenGitHubRepo: () -> Unit
+    onTestAutoSilent15Sec: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -408,138 +395,6 @@ fun SettingsScreen(
                 }
             }
         }
-
-        // 5. About & GitHub Remote Updates
-        item {
-            SettingsSectionCard(
-                icon = Icons.Rounded.SystemUpdate,
-                title = "Uygulama ve Uzaktan Güncelleme"
-            ) {
-                InfoKeyValueRow(label = "Yapımcı", value = GitHubUpdateManager.DEVELOPER_NAME)
-                HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
-                InfoKeyValueRow(label = "Mevcut Sürüm", value = "v${BuildConfig.VERSION_NAME}")
-                HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
-                InfoKeyValueRow(
-                    label = "Güncelleme Kaynağı",
-                    value = "GitHub (${GitHubUpdateManager.GITHUB_OWNER}/${GitHubUpdateManager.GITHUB_REPO})"
-                )
-
-                if (!updateState.statusMessage.isNullOrBlank()) {
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        text = updateState.statusMessage,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Medium,
-                        color = if (updateState.availableRelease != null) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        }
-                    )
-                }
-
-                if (updateState.isDownloading) {
-                    Spacer(Modifier.height(8.dp))
-                    val progress = updateState.progressFraction
-                    if (progress != null) {
-                        LinearProgressIndicator(
-                            progress = { progress },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        val dlMb = updateState.downloadedBytes / (1024.0 * 1024.0)
-                        val totMb = updateState.totalBytes / (1024.0 * 1024.0)
-                        Text(
-                            text = String.format(
-                                Locale.US,
-                                "İndiriliyor: %%%d (%.1f / %.1f MB)",
-                                (progress * 100f).roundToInt(),
-                                dlMb,
-                                totMb
-                            ),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    } else {
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                    }
-                }
-
-                Spacer(Modifier.height(12.dp))
-                if (updateState.availableRelease != null) {
-                    Button(
-                        onClick = onOpenUpdateDialog,
-                        enabled = !updateState.isDownloading,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.SystemUpdate,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text("Yeni Sürümü İndir (${updateState.availableRelease.tagName})")
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
-
-                OutlinedButton(
-                    onClick = onCheckForUpdate,
-                    enabled = !updateState.isChecking && !updateState.isDownloading,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    if (updateState.isChecking) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text("GitHub Kontrol Ediliyor...")
-                    } else {
-                        Text("GitHub'dan Güncelleme Kontrol Et")
-                    }
-                }
-
-                Spacer(Modifier.height(8.dp))
-                OutlinedButton(
-                    onClick = onOpenGitHubRepo,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.OpenInNew,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text("GitHub Deposunu Aç")
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun InfoKeyValueRow(label: String, value: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 2.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold
-        )
     }
 }
 

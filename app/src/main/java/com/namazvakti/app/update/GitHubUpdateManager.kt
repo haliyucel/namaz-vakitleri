@@ -30,12 +30,12 @@ sealed interface UpdateCheckResult {
 }
 
 data class UpdateUiState(
-    val isChecking: Boolean = false,
     val availableRelease: RemoteReleaseInfo? = null,
-    val statusMessage: String? = null,
     val isDownloading: Boolean = false,
     val downloadedBytes: Long = 0L,
-    val totalBytes: Long = 0L
+    val totalBytes: Long = 0L,
+    val downloadedApkPath: String? = null,
+    val awaitingInstallPermission: Boolean = false
 ) {
     val progressFraction: Float?
         get() = if (totalBytes > 0L) (downloadedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f) else null
@@ -59,7 +59,7 @@ object GitHubUpdateManager {
                 }
                 if (code !in 200..299) {
                     return@withContext UpdateCheckResult.Error(
-                        "GitHub güncelleme sunucusu yanıt vermedi (HTTP $code)."
+                        "Güncelleme sunucusu yanıt vermedi (HTTP $code)."
                     )
                 }
                 val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
