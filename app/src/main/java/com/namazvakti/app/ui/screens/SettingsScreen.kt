@@ -19,11 +19,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Calculate
 import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.DoNotDisturbOn
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material.icons.rounded.VolumeOff
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Card
@@ -91,6 +91,15 @@ fun SettingsScreen(
                     checked = settings.warn5MinEnabled,
                     onCheckedChange = { enabled ->
                         onUpdateSettings { it.copy(warn5MinEnabled = enabled) }
+                    }
+                )
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                SwitchRow(
+                    title = "Kerahat vakti girdiğinde uyar",
+                    subtitle = "Sabah, Öğle ve Akşam kerahat vakti başladığında bildirim verir",
+                    checked = settings.kerahatAlertEnabled,
+                    onCheckedChange = { enabled ->
+                        onUpdateSettings { it.copy(kerahatAlertEnabled = enabled) }
                     }
                 )
                 Spacer(Modifier.height(8.dp))
@@ -193,15 +202,15 @@ fun SettingsScreen(
             }
         }
 
-        // 3. Auto-Silent & Auto-Restore Sound Mode
+        // 3. Auto-Silent & Auto-Restore Sound Mode (Silent Mode only, NOT Do Not Disturb)
         item {
             SettingsSectionCard(
-                icon = Icons.Rounded.DoNotDisturbOn,
+                icon = Icons.Rounded.VolumeOff,
                 title = "Otomatik Sessiz Mod"
             ) {
                 SwitchRow(
                     title = "Namaz vaktinde telefonu sessize al",
-                    subtitle = "Vakit girdiğinde otomatik sessize alır, süre bitince sesliye döndürür",
+                    subtitle = "Rahatsız Etme modunu açmadan telefonu doğrudan sessize alır, süre bitince sesliye döndürür",
                     checked = settings.autoSilentEnabled,
                     onCheckedChange = { enabled ->
                         onUpdateSettings { it.copy(autoSilentEnabled = enabled) }
@@ -209,7 +218,7 @@ fun SettingsScreen(
                 )
 
                 Spacer(Modifier.height(8.dp))
-                // DND permission status row
+                // Silent mode permission status row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -227,8 +236,8 @@ fun SettingsScreen(
                         )
                         Spacer(Modifier.width(6.dp))
                         Text(
-                            text = if (hasDndPermission) "Rahatsız Etme izni verildi"
-                            else "Rahatsız Etme izni gerekli",
+                            text = if (hasDndPermission) "Tam sessiz mod izni verildi (Rahatsız Etme açılmaz)"
+                            else "Tam sessiz (titreşimsiz) mod için ses kontrol izni verin",
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Medium
                         )

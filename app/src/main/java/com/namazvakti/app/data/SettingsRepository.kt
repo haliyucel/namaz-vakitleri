@@ -51,6 +51,7 @@ class SettingsRepository(context: Context) {
             ),
             warn15MinEnabled = prefs.getBoolean(KEY_WARN_15, true),
             warn5MinEnabled = prefs.getBoolean(KEY_WARN_5, true),
+            kerahatAlertEnabled = prefs.getBoolean(KEY_KERAHAT_ALERT, true),
             alertEnabledPrayers = loadPrayerSet(KEY_ALERT_PRAYERS, PrayerType.entries.toSet()),
             adhanEnabled = prefs.getBoolean(KEY_ADHAN_ENABLED, true),
             adhanEnabledPrayers = loadPrayerSet(KEY_ADHAN_PRAYERS, PrayerType.ADHAN_PRAYERS.toSet()),
@@ -74,6 +75,7 @@ class SettingsRepository(context: Context) {
             .putString(KEY_CALC_METHOD, s.calculationMethod.name)
             .putBoolean(KEY_WARN_15, s.warn15MinEnabled)
             .putBoolean(KEY_WARN_5, s.warn5MinEnabled)
+            .putBoolean(KEY_KERAHAT_ALERT, s.kerahatAlertEnabled)
             .putStringSet(KEY_ALERT_PRAYERS, s.alertEnabledPrayers.map { it.name }.toSet())
             .putBoolean(KEY_ADHAN_ENABLED, s.adhanEnabled)
             .putStringSet(KEY_ADHAN_PRAYERS, s.adhanEnabledPrayers.map { it.name }.toSet())
@@ -102,6 +104,7 @@ class SettingsRepository(context: Context) {
         private const val KEY_CALC_METHOD = "calc_method"
         private const val KEY_WARN_15 = "warn_15"
         private const val KEY_WARN_5 = "warn_5"
+        private const val KEY_KERAHAT_ALERT = "kerahat_alert"
         private const val KEY_ALERT_PRAYERS = "alert_prayers"
         private const val KEY_ADHAN_ENABLED = "adhan_enabled"
         private const val KEY_ADHAN_PRAYERS = "adhan_prayers"

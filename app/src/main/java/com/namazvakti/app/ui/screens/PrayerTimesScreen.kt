@@ -21,12 +21,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Alarm
-import androidx.compose.material.icons.rounded.DoNotDisturbOn
 import androidx.compose.material.icons.rounded.GpsFixed
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.VolumeOff
@@ -38,6 +38,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -59,6 +60,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.namazvakti.app.alarm.AutoSilentStatus
+import com.namazvakti.app.domain.KerahatCalculator
+import com.namazvakti.app.domain.KerahatWindow
 import com.namazvakti.app.model.AppSettings
 import com.namazvakti.app.model.PrayerDay
 import com.namazvakti.app.model.PrayerType
@@ -115,6 +118,12 @@ fun PrayerTimesScreen(
     }
 
     val displayedDay = if (showTomorrow) tomorrowPrayers else todayPrayers
+    val kerahatWindows = remember(displayedDay) {
+        KerahatCalculator.calculateWindows(displayedDay)
+    }
+    val activeKerahat = remember(todayPrayers, nowEpochMillis / 1000L) {
+        KerahatCalculator.findActiveWindow(todayPrayers, nowZdt)
+    }
     val dateFmt = remember { DateTimeFormatter.ofPattern("d MMMM yyyy, EEEE", Locale("tr", "TR")) }
     val timeFmt = remember { DateTimeFormatter.ofPattern("HH:mm") }
 
@@ -237,6 +246,53 @@ fun PrayerTimesScreen(
             }
         }
 
+        // 1.75 Live Active Kerahat Warning Banner
+        if (activeKerahat != null) {
+            item {
+                val rem = activeKerahat.remainingDuration(nowZdt)
+                val remMin = rem.toMinutes()
+                val remSec = rem.seconds % 60
+                val rangeStr = "${activeKerahat.start.format(timeFmt)} - ${activeKerahat.end.format(timeFmt)}"
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = AmberWarn.copy(alpha = 0.16f)),
+                    border = BorderStroke(1.2.dp, AmberWarn),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.WarningAmber,
+                            contentDescription = null,
+                            tint = AmberWarn
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Kerahat Vakti Aktif • ${activeKerahat.type.title}",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                            Text(
+                                text = "$rangeStr  •  Bitimine ${String.format(Locale.US, "%02d:%02d", remMin, remSec)} kaldı",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = AmberWarn
+                            )
+                            Text(
+                                text = activeKerahat.type.fiqhNote,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // 2. Active Adhan Banner
         if (currentlyPlayingAdhan != null) {
             item {
@@ -308,7 +364,7 @@ fun PrayerTimesScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = Icons.Rounded.DoNotDisturbOn,
+                            imageVector = Icons.Rounded.VolumeOff,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onSecondaryContainer
                         )
@@ -380,7 +436,7 @@ fun PrayerTimesScreen(
                         }
                         if (needsDnd) {
                             PermissionActionRow(
-                                text = "Otomatik sessiz/sesli mod için Rahatsız Etme izni",
+                                text = "Tam sessiz mod (titreşimsiz) için ses kontrol izni",
                                 buttonLabel = "Ayarları Aç",
                                 onClick = onOpenDndSettings
                             )
@@ -447,6 +503,17 @@ fun PrayerTimesScreen(
             )
         }
 
+        // 6.5 Kerahat Vakitleri Card (Sabah, Öğle, Akşam — Diyanet 45 dk)
+        if (kerahatWindows.isNotEmpty()) {
+            item {
+                KerahatScheduleCard(
+                    windows = kerahatWindows,
+                    activeWindow = if (!showTomorrow) activeKerahat else null,
+                    timeFmt = timeFmt
+                )
+            }
+        }
+
         // 7. Source & Active Features Summary Footer
         item {
             Column(
@@ -464,6 +531,7 @@ fun PrayerTimesScreen(
                 val summary = buildList {
                     if (settings.warn15MinEnabled) add("15 dk uyarı")
                     if (settings.warn5MinEnabled) add("5 dk uyarı")
+                    if (settings.kerahatAlertEnabled) add("Kerahat uyarısı")
                     if (settings.adhanEnabled) add("Ezan açık")
                     if (settings.autoSilentEnabled) add("${settings.autoSilentDurationMinutes} dk otomatik sessiz")
                 }.joinToString(" • ")
@@ -733,6 +801,88 @@ private fun PrayerRowCard(
                 color = if (isHighlighted) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
             )
+        }
+    }
+}
+
+@Composable
+private fun KerahatScheduleCard(
+    windows: List<KerahatWindow>,
+    activeWindow: KerahatWindow?,
+    timeFmt: DateTimeFormatter
+) {
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, AmberWarn.copy(alpha = 0.4f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Rounded.Schedule,
+                    contentDescription = null,
+                    tint = AmberWarn,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Kerahat Vakitleri",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            windows.forEachIndexed { idx, w ->
+                val isNow = activeWindow?.type == w.type
+                if (idx > 0) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = w.type.title,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (isNow) FontWeight.Bold else FontWeight.SemiBold,
+                                color = if (isNow) AmberWarn else MaterialTheme.colorScheme.onSurface
+                            )
+                            if (isNow) {
+                                Spacer(Modifier.width(6.dp))
+                                Surface(
+                                    color = AmberWarn,
+                                    shape = RoundedCornerShape(50)
+                                ) {
+                                    Text(
+                                        text = "Aktif",
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 1.dp)
+                                    )
+                                }
+                            }
+                        }
+                        Text(
+                            text = w.type.subtitle,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Text(
+                        text = "${w.start.format(timeFmt)} - ${w.end.format(timeFmt)}",
+                        style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = "tnum"),
+                        fontWeight = FontWeight.Bold,
+                        color = if (isNow) AmberWarn else MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
         }
     }
 }

@@ -5,6 +5,7 @@ data class AppSettings(
     val calculationMethod: CalculationMethod = CalculationMethod.DIYANET,
     val warn15MinEnabled: Boolean = true,
     val warn5MinEnabled: Boolean = true,
+    val kerahatAlertEnabled: Boolean = true,
     val alertEnabledPrayers: Set<PrayerType> = PrayerType.entries.toSet(),
     val adhanEnabled: Boolean = true,
     val adhanEnabledPrayers: Set<PrayerType> = PrayerType.ADHAN_PRAYERS.toSet(),

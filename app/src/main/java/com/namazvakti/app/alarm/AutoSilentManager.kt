@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
 
 data class AutoSilentStatus(
     val isActive: Boolean = false,
@@ -26,13 +27,19 @@ data class AutoSilentStatus(
     val restoreAtMillis: Long = 0L
 )
 
+/**
+ * Silences the phone purely via AudioManager Silent Mode (RINGER_MODE_SILENT)
+ * and ring/notification stream muting — WITHOUT turning on Do Not Disturb (Rahatsız Etme).
+ */
 object AutoSilentManager {
     private const val PREFS_NAME = "namaz_auto_silent_state"
     private const val KEY_ACTIVE = "active"
     private const val KEY_PRAYER_NAME = "prayer_name"
     private const val KEY_RESTORE_AT = "restore_at"
     private const val KEY_PREV_RINGER = "prev_ringer"
-    private const val KEY_PREV_DND = "prev_dnd"
+    private const val KEY_PREV_RING_VOL = "prev_ring_vol"
+    private const val KEY_PREV_NOTIF_VOL = "prev_notif_vol"
+    private const val KEY_PREV_SYS_VOL = "prev_sys_vol"
 
     private const val NOTIFICATION_ID_SILENT = 4201
     private const val NOTIFICATION_ID_RESTORED = 4202
@@ -52,7 +59,8 @@ object AutoSilentManager {
         }
     }
 
-    fun hasDndPermission(context: Context): Boolean {
+    /** Android requires notification policy access solely to allow AudioManager.RINGER_MODE_SILENT. */
+    fun hasSilentModePermission(context: Context): Boolean {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
         return nm?.isNotificationPolicyAccessGranted == true
     }
@@ -63,13 +71,8 @@ object AutoSilentManager {
         durationSeconds: Long
     ): Boolean {
         val appCtx = context.applicationContext
-        val nm = appCtx.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return false
         val am = appCtx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return false
-
-        if (!nm.isNotificationPolicyAccessGranted) {
-            postPermissionNeededNotification(appCtx)
-            return false
-        }
+        val hasFullSilentPerm = hasSilentModePermission(appCtx)
 
         val prefs = appCtx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val alreadyActive = prefs.getBoolean(KEY_ACTIVE, false)
@@ -79,18 +82,37 @@ object AutoSilentManager {
         } else {
             am.ringerMode
         }
-        val prevDnd = if (alreadyActive) {
-            prefs.getInt(KEY_PREV_DND, NotificationManager.INTERRUPTION_FILTER_ALL)
+        val prevRingVol = if (alreadyActive) {
+            prefs.getInt(KEY_PREV_RING_VOL, defaultLoudVolume(am, AudioManager.STREAM_RING))
         } else {
-            nm.currentInterruptionFilter
+            am.getStreamVolume(AudioManager.STREAM_RING)
+        }
+        val prevNotifVol = if (alreadyActive) {
+            prefs.getInt(KEY_PREV_NOTIF_VOL, defaultLoudVolume(am, AudioManager.STREAM_NOTIFICATION))
+        } else {
+            am.getStreamVolume(AudioManager.STREAM_NOTIFICATION)
+        }
+        val prevSysVol = if (alreadyActive) {
+            prefs.getInt(KEY_PREV_SYS_VOL, defaultLoudVolume(am, AudioManager.STREAM_SYSTEM))
+        } else {
+            am.getStreamVolume(AudioManager.STREAM_SYSTEM)
         }
 
-        // Silence incoming calls & notifications while still allowing USAGE_ALARM (e.g., optional Adhan & alarms)
-        runCatching {
-            nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALARMS)
+        // Put phone into pure Silent Mode (🔕) — NEVER enable Do Not Disturb (setInterruptionFilter)!
+        var silentApplied = false
+        if (hasFullSilentPerm) {
+            silentApplied = runCatching {
+                am.ringerMode = AudioManager.RINGER_MODE_SILENT
+                true
+            }.getOrDefault(false)
         }
-        runCatching {
-            am.ringerMode = AudioManager.RINGER_MODE_SILENT
+
+        if (!silentApplied) {
+            // Fallback without policy permission: mute ring/notification streams & switch to vibrate
+            runCatching { am.setStreamVolume(AudioManager.STREAM_RING, 0, 0) }
+            runCatching { am.setStreamVolume(AudioManager.STREAM_NOTIFICATION, 0, 0) }
+            runCatching { am.setStreamVolume(AudioManager.STREAM_SYSTEM, 0, 0) }
+            runCatching { am.ringerMode = AudioManager.RINGER_MODE_VIBRATE }
         }
 
         val restoreAt = System.currentTimeMillis() + (durationSeconds * 1000L)
@@ -99,7 +121,9 @@ object AutoSilentManager {
             .putString(KEY_PRAYER_NAME, prayerName)
             .putLong(KEY_RESTORE_AT, restoreAt)
             .putInt(KEY_PREV_RINGER, prevRinger)
-            .putInt(KEY_PREV_DND, prevDnd)
+            .putInt(KEY_PREV_RING_VOL, prevRingVol)
+            .putInt(KEY_PREV_NOTIF_VOL, prevNotifVol)
+            .putInt(KEY_PREV_SYS_VOL, prevSysVol)
             .apply()
 
         _status.value = AutoSilentStatus(
@@ -119,12 +143,13 @@ object AutoSilentManager {
         isManual: Boolean = false
     ) {
         val appCtx = context.applicationContext
-        val nm = appCtx.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
         val am = appCtx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         val prefs = appCtx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
         val prevRinger = prefs.getInt(KEY_PREV_RINGER, AudioManager.RINGER_MODE_NORMAL)
-        val prevDnd = prefs.getInt(KEY_PREV_DND, NotificationManager.INTERRUPTION_FILTER_ALL)
+        val prevRingVol = prefs.getInt(KEY_PREV_RING_VOL, -1)
+        val prevNotifVol = prefs.getInt(KEY_PREV_NOTIF_VOL, -1)
+        val prevSysVol = prefs.getInt(KEY_PREV_SYS_VOL, -1)
 
         prefs.edit()
             .putBoolean(KEY_ACTIVE, false)
@@ -135,13 +160,19 @@ object AutoSilentManager {
         PrayerAlarmScheduler.cancelRestoreSound(appCtx)
         NotificationManagerCompat.from(appCtx).cancel(NOTIFICATION_ID_SILENT)
 
-        if (nm != null && nm.isNotificationPolicyAccessGranted) {
-            val targetDnd = if (restoreAlwaysLoud) NotificationManager.INTERRUPTION_FILTER_ALL else prevDnd
-            runCatching { nm.setInterruptionFilter(targetDnd) }
-        }
         if (am != null) {
             val targetRinger = if (restoreAlwaysLoud) AudioManager.RINGER_MODE_NORMAL else prevRinger
             runCatching { am.ringerMode = targetRinger }
+
+            if (targetRinger == AudioManager.RINGER_MODE_NORMAL) {
+                val ringTarget = if (prevRingVol > 0) prevRingVol else defaultLoudVolume(am, AudioManager.STREAM_RING)
+                val notifTarget = if (prevNotifVol > 0) prevNotifVol else defaultLoudVolume(am, AudioManager.STREAM_NOTIFICATION)
+                val sysTarget = if (prevSysVol > 0) prevSysVol else defaultLoudVolume(am, AudioManager.STREAM_SYSTEM)
+
+                runCatching { am.setStreamVolume(AudioManager.STREAM_RING, ringTarget, 0) }
+                runCatching { am.setStreamVolume(AudioManager.STREAM_NOTIFICATION, notifTarget, 0) }
+                runCatching { am.setStreamVolume(AudioManager.STREAM_SYSTEM, sysTarget, 0) }
+            }
         }
 
         if (!isManual) {
@@ -163,6 +194,11 @@ object AutoSilentManager {
             PrayerAlarmScheduler.scheduleRestoreSound(context, restoreAt)
             showOngoingSilentNotification(context, prayer, restoreAt)
         }
+    }
+
+    private fun defaultLoudVolume(am: AudioManager, stream: Int): Int {
+        val max = am.getStreamMaxVolume(stream).coerceAtLeast(1)
+        return (max * 0.7).roundToInt().coerceIn(1, max)
     }
 
     private fun showOngoingSilentNotification(context: Context, prayerName: String, restoreAtMillis: Long) {
@@ -207,26 +243,6 @@ object AutoSilentManager {
             .setContentTitle("Sesli Moda Geçildi")
             .setContentText("Namaz süresi tamamlandı, telefon tekrar sesli hale getirildi.")
             .setAutoCancel(true)
-            .build()
-        runCatching {
-            NotificationManagerCompat.from(context).notify(NOTIFICATION_ID_RESTORED, notif)
-        }
-    }
-
-    private fun postPermissionNeededNotification(context: Context) {
-        if (!canPostNotifications(context)) return
-        val openIntent = PendingIntent.getActivity(
-            context,
-            4203,
-            Intent(context, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val notif = NotificationCompat.Builder(context, NotificationChannels.CHANNEL_WARNINGS)
-            .setSmallIcon(R.drawable.ic_stat_mosque)
-            .setContentTitle("Otomatik Sessiz Mod İzni Gerekli")
-            .setContentText("Telefonu sessize alabilmek için Ayarlar sekmesinden Rahatsız Etme iznini verin.")
-            .setAutoCancel(true)
-            .setContentIntent(openIntent)
             .build()
         runCatching {
             NotificationManagerCompat.from(context).notify(NOTIFICATION_ID_RESTORED, notif)

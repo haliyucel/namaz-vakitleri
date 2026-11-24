@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import com.namazvakti.app.MainActivity
 import com.namazvakti.app.NamazApp
 import com.namazvakti.app.R
+import com.namazvakti.app.domain.KerahatType
 import com.namazvakti.app.model.PrayerType
 import com.namazvakti.app.service.AdhanPlaybackService
 
@@ -53,6 +54,18 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
                     id = 3200 + prayer.ordinal,
                     title = "${prayer.displayName} Vaktine 5 Dakika Kaldı!",
                     message = "${prayer.displayName} vakti saat $timeText. 2. ve son uyarı."
+                )
+            }
+
+            ACTION_KERAHAT_START -> {
+                val kerahatName = intent.getStringExtra(EXTRA_KERAHAT_TYPE) ?: return
+                val kerahat = KerahatType.entries.firstOrNull { it.name == kerahatName } ?: return
+                val rangeText = intent.getStringExtra(EXTRA_PRAYER_TIME_TEXT) ?: ""
+                postWarningNotification(
+                    context = context,
+                    id = 3400 + kerahat.ordinal,
+                    title = "${kerahat.title} Başladı ($rangeText)",
+                    message = kerahat.fiqhNote
                 )
             }
 
@@ -141,12 +154,14 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_WARN_15 = "com.namazvakti.app.ACTION_WARN_15"
         const val ACTION_WARN_5 = "com.namazvakti.app.ACTION_WARN_5"
+        const val ACTION_KERAHAT_START = "com.namazvakti.app.ACTION_KERAHAT_START"
         const val ACTION_PRAYER_TIME = "com.namazvakti.app.ACTION_PRAYER_TIME"
         const val ACTION_RESTORE_SOUND = "com.namazvakti.app.ACTION_RESTORE_SOUND"
         const val ACTION_MANUAL_RESTORE_SOUND = "com.namazvakti.app.ACTION_MANUAL_RESTORE_SOUND"
         const val ACTION_RESCHEDULE_DAILY = "com.namazvakti.app.ACTION_RESCHEDULE_DAILY"
 
         const val EXTRA_PRAYER_TYPE = "prayer_type"
+        const val EXTRA_KERAHAT_TYPE = "kerahat_type"
         const val EXTRA_PRAYER_TIME_TEXT = "prayer_time_text"
     }
 }

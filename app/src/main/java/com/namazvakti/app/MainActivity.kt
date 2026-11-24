@@ -161,7 +161,7 @@ private fun NamazMainApp(activity: ComponentActivity, app: NamazApp) {
         return PermissionSummary(
             hasNotification = hasNotif,
             hasExactAlarm = PrayerAlarmScheduler.canScheduleExactAlarms(activity),
-            hasDndPolicy = AutoSilentManager.hasDndPermission(activity)
+            hasDndPolicy = AutoSilentManager.hasSilentModePermission(activity)
         )
     }
 
@@ -345,26 +345,19 @@ private fun NamazMainApp(activity: ComponentActivity, app: NamazApp) {
     }
 
     fun testAutoSilent15Sec() {
-        if (!AutoSilentManager.hasDndPermission(activity)) {
-            Toast.makeText(
-                activity,
-                "Önce Rahatsız Etme iznini açmalısınız.",
-                Toast.LENGTH_LONG
-            ).show()
-            openDndSettings()
-            return
-        }
+        val hasFullPerm = AutoSilentManager.hasSilentModePermission(activity)
         val ok = AutoSilentManager.enterSilentMode(
             context = activity,
             prayerName = "Test",
             durationSeconds = 15L
         )
         if (ok) {
-            Toast.makeText(
-                activity,
-                "Telefon sessize alındı. 15 saniye sonra otomatik sesli moda dönecek.",
-                Toast.LENGTH_LONG
-            ).show()
+            val msg = if (hasFullPerm) {
+                "Telefon sessiz moda alındı (Rahatsız Etme kapalı). 15 saniye sonra tekrar sesli olacak."
+            } else {
+                "Zil sesi kapatıldı (titreşim). Tam titreşimsiz sessiz mod için yukarıdan izin verebilirsiniz. 15 sn sonra sesli olacak."
+            }
+            Toast.makeText(activity, msg, Toast.LENGTH_LONG).show()
         }
     }
 

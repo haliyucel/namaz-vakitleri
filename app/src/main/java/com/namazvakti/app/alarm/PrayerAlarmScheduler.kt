@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import com.namazvakti.app.data.PrayerTimesRepository
+import com.namazvakti.app.domain.KerahatCalculator
+import com.namazvakti.app.domain.KerahatType
 import com.namazvakti.app.model.AppSettings
 import com.namazvakti.app.model.PrayerType
 import java.time.LocalDate
@@ -35,12 +37,15 @@ object PrayerAlarmScheduler {
         val today = LocalDate.now(zone)
         val nowMillis = System.currentTimeMillis()
 
-        // Cancel all existing 2-day prayer alarms cleanly before scheduling fresh ones
+        // Cancel all existing 2-day prayer & kerahat alarms cleanly before scheduling fresh ones
         for (dayOffset in 0..1) {
             for (prayer in PrayerType.entries) {
                 cancelAlarm(appCtx, am, requestCode(dayOffset, prayer, 1), PrayerAlarmReceiver.ACTION_WARN_15)
                 cancelAlarm(appCtx, am, requestCode(dayOffset, prayer, 2), PrayerAlarmReceiver.ACTION_WARN_5)
                 cancelAlarm(appCtx, am, requestCode(dayOffset, prayer, 3), PrayerAlarmReceiver.ACTION_PRAYER_TIME)
+            }
+            for (kerahat in KerahatType.entries) {
+                cancelAlarm(appCtx, am, kerahatRequestCode(dayOffset, kerahat), PrayerAlarmReceiver.ACTION_KERAHAT_START)
             }
         }
 
@@ -108,6 +113,28 @@ object PrayerAlarmScheduler {
                         prayerTimeText = timeStr,
                         triggerAtMillis = prayerMillis
                     )
+                }
+            }
+
+            // 4. Kerahat start alerts (Sabah / Öğle / Akşam kerahat windows)
+            if (settings.kerahatAlertEnabled) {
+                for (window in KerahatCalculator.calculateWindows(prayerDay)) {
+                    val triggerMillis = window.startZdt.toInstant().toEpochMilli()
+                    if (triggerMillis > nowMillis + 2_000L) {
+                        val rangeText = "${window.start.format(TIME_FMT)} - ${window.end.format(TIME_FMT)}"
+                        val intent = Intent(appCtx, PrayerAlarmReceiver::class.java).apply {
+                            action = PrayerAlarmReceiver.ACTION_KERAHAT_START
+                            putExtra(PrayerAlarmReceiver.EXTRA_KERAHAT_TYPE, window.type.name)
+                            putExtra(PrayerAlarmReceiver.EXTRA_PRAYER_TIME_TEXT, rangeText)
+                        }
+                        val pi = PendingIntent.getBroadcast(
+                            appCtx,
+                            kerahatRequestCode(dayOffset, window.type),
+                            intent,
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                        )
+                        setAlarmCompat(appCtx, am, triggerMillis, pi)
+                    }
                 }
             }
         }
@@ -206,4 +233,7 @@ object PrayerAlarmScheduler {
 
     private fun requestCode(dayOffset: Int, prayer: PrayerType, eventKind: Int): Int =
         1000 + dayOffset * 100 + prayer.ordinal * 10 + eventKind
+
+    private fun kerahatRequestCode(dayOffset: Int, kerahat: KerahatType): Int =
+        2500 + dayOffset * 10 + kerahat.ordinal
 }
