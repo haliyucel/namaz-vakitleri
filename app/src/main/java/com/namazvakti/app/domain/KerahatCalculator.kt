@@ -100,4 +100,10 @@ object KerahatCalculator {
         calculateWindows(prayerDay).firstOrNull { w ->
             !now.isBefore(w.startZdt) && now.isBefore(w.endZdt)
         }
+
+    fun findNextWindow(today: PrayerDay, tomorrow: PrayerDay, now: ZonedDateTime): KerahatWindow? {
+        val todayNext = calculateWindows(today).firstOrNull { w -> w.startZdt.isAfter(now) }
+        if (todayNext != null) return todayNext
+        return calculateWindows(tomorrow).firstOrNull()
+    }
 }

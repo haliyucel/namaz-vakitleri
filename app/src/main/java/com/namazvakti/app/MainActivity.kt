@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccessTime
 import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -58,6 +59,7 @@ import com.namazvakti.app.ui.screens.LocationScreen
 import com.namazvakti.app.ui.screens.PermissionSummary
 import com.namazvakti.app.ui.screens.PrayerTimesScreen
 import com.namazvakti.app.ui.screens.QiblaScreen
+import com.namazvakti.app.ui.screens.RehberScreen
 import com.namazvakti.app.ui.screens.SettingsScreen
 import com.namazvakti.app.ui.theme.NamazTheme
 import com.namazvakti.app.update.GitHubUpdateManager
@@ -88,6 +90,7 @@ private enum class AppTab(val label: String) {
     TIMES("Vakitler"),
     LOCATION("Konum"),
     QIBLA("Kıble"),
+    REHBER("Rehber"),
     SETTINGS("Ayarlar")
 }
 
@@ -369,6 +372,7 @@ private fun NamazMainApp(activity: ComponentActivity, app: NamazApp) {
                         AppTab.TIMES -> Icons.Rounded.AccessTime
                         AppTab.LOCATION -> Icons.Rounded.LocationOn
                         AppTab.QIBLA -> Icons.Rounded.Explore
+                        AppTab.REHBER -> Icons.Rounded.MenuBook
                         AppTab.SETTINGS -> Icons.Rounded.Settings
                     }
                     NavigationBarItem(
@@ -434,6 +438,8 @@ private fun NamazMainApp(activity: ComponentActivity, app: NamazApp) {
                 )
 
                 AppTab.QIBLA -> QiblaScreen(location = settings.location)
+
+                AppTab.REHBER -> RehberScreen(kazaRepository = app.kazaRepository)
 
                 AppTab.SETTINGS -> SettingsScreen(
                     settings = settings,

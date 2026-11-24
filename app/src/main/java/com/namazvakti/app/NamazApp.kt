@@ -4,6 +4,7 @@ import android.app.Application
 import com.namazvakti.app.alarm.AutoSilentManager
 import com.namazvakti.app.alarm.NotificationChannels
 import com.namazvakti.app.alarm.PrayerAlarmScheduler
+import com.namazvakti.app.data.KazaRepository
 import com.namazvakti.app.data.LocationRepository
 import com.namazvakti.app.data.PrayerTimesRepository
 import com.namazvakti.app.data.SettingsRepository
@@ -16,6 +17,8 @@ class NamazApp : Application() {
         private set
     lateinit var prayerTimesRepository: PrayerTimesRepository
         private set
+    lateinit var kazaRepository: KazaRepository
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -23,6 +26,7 @@ class NamazApp : Application() {
         settingsRepository = SettingsRepository(this)
         locationRepository = LocationRepository(this)
         prayerTimesRepository = PrayerTimesRepository(this)
+        kazaRepository = KazaRepository(this)
 
         AutoSilentManager.syncState(this)
         PrayerAlarmScheduler.rescheduleAll(

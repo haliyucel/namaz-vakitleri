@@ -124,6 +124,9 @@ fun PrayerTimesScreen(
     val activeKerahat = remember(todayPrayers, nowEpochMillis / 1000L) {
         KerahatCalculator.findActiveWindow(todayPrayers, nowZdt)
     }
+    val nextKerahat = remember(todayPrayers, tomorrowPrayers, nowEpochMillis / 60_000L) {
+        KerahatCalculator.findNextWindow(todayPrayers, tomorrowPrayers, nowZdt)
+    }
     val dateFmt = remember { DateTimeFormatter.ofPattern("d MMMM yyyy, EEEE", Locale("tr", "TR")) }
     val timeFmt = remember { DateTimeFormatter.ofPattern("HH:mm") }
 
@@ -162,13 +165,17 @@ fun PrayerTimesScreen(
             }
         }
 
-        // 1. Hero Card
+        // 1. Hero Card (turns amber-warning immediately when inside Kerahat time!)
         item {
             HeroCountdownCard(
                 settings = settings,
                 dateText = todayPrayers.date.format(dateFmt),
                 hijriText = todayPrayers.hijriDateText,
                 countdown = countdownInfo,
+                activeKerahat = activeKerahat,
+                nextKerahat = nextKerahat,
+                nowZdt = nowZdt,
+                timeFmt = timeFmt,
                 isRefreshing = isRefreshing,
                 onOpenLocationPicker = onOpenLocationPicker,
                 onRefresh = onRefresh
@@ -240,53 +247,6 @@ fun PrayerTimesScreen(
                             } else {
                                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                             }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 1.75 Live Active Kerahat Warning Banner
-        if (activeKerahat != null) {
-            item {
-                val rem = activeKerahat.remainingDuration(nowZdt)
-                val remMin = rem.toMinutes()
-                val remSec = rem.seconds % 60
-                val rangeStr = "${activeKerahat.start.format(timeFmt)} - ${activeKerahat.end.format(timeFmt)}"
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = AmberWarn.copy(alpha = 0.16f)),
-                    border = BorderStroke(1.2.dp, AmberWarn),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.WarningAmber,
-                            contentDescription = null,
-                            tint = AmberWarn
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Kerahat Vakti Aktif • ${activeKerahat.type.title}",
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.titleSmall
-                            )
-                            Text(
-                                text = "$rangeStr  •  Bitimine ${String.format(Locale.US, "%02d:%02d", remMin, remSec)} kaldı",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = AmberWarn
-                            )
-                            Text(
-                                text = activeKerahat.type.fiqhNote,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
                         }
                     }
                 }
@@ -553,22 +513,68 @@ private fun HeroCountdownCard(
     dateText: String,
     hijriText: String,
     countdown: NextPrayerCountdown,
+    activeKerahat: KerahatWindow?,
+    nextKerahat: KerahatWindow?,
+    nowZdt: ZonedDateTime,
+    timeFmt: DateTimeFormatter,
     isRefreshing: Boolean,
     onOpenLocationPicker: () -> Unit,
     onRefresh: () -> Unit
 ) {
+    val isKerahatNow = activeKerahat != null
+    val gradientColors = if (isKerahatNow) {
+        listOf(Color(0xFF7A2E00), Color(0xFFA84708), Color(0xFFD06A16))
+    } else {
+        listOf(EmeraldDeep, EmeraldPrimary, EmeraldLight)
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
-            .background(
-                Brush.linearGradient(
-                    colors = listOf(EmeraldDeep, EmeraldPrimary, EmeraldLight)
-                )
-            )
+            .background(Brush.linearGradient(colors = gradientColors))
             .padding(20.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // Unmistakable top pill right inside Hero Card when currently inside Kerahat time!
+            if (activeKerahat != null) {
+                val rem = activeKerahat.remainingDuration(nowZdt)
+                val remMin = rem.toMinutes()
+                val remSec = rem.seconds % 60
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color.White.copy(alpha = 0.20f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.55f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.WarningAmber,
+                            contentDescription = null,
+                            tint = Color(0xFFFFF0A8),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "ŞU AN KERAHAT VAKTİ • ${activeKerahat.type.title.uppercase(Locale("tr", "TR"))}",
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Text(
+                                text = "${activeKerahat.start.format(timeFmt)}-${activeKerahat.end.format(timeFmt)} • Bitimine ${String.format(Locale.US, "%02d:%02d", remMin, remSec)} • ${activeKerahat.type.fiqhNote}",
+                                color = Color.White.copy(alpha = 0.92f),
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                    }
+                }
+            }
+
             // Top bar: Location pill + Refresh
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -679,6 +685,31 @@ private fun HeroCountdownCard(
                     color = GoldSoft,
                     trackColor = Color.White.copy(alpha = 0.18f)
                 )
+                if (activeKerahat == null && nextKerahat != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color.White.copy(alpha = 0.13f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Schedule,
+                                contentDescription = null,
+                                tint = GoldSoft,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "Sıradaki Kerahat: ${nextKerahat.type.title} (${nextKerahat.start.format(timeFmt)} - ${nextKerahat.end.format(timeFmt)})",
+                                color = Color.White.copy(alpha = 0.9f),
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                    }
+                }
             }
         }
     }
