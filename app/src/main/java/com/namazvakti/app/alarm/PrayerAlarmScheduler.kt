@@ -10,6 +10,7 @@ import com.namazvakti.app.domain.KerahatCalculator
 import com.namazvakti.app.domain.KerahatType
 import com.namazvakti.app.model.AppSettings
 import com.namazvakti.app.model.PrayerType
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -37,7 +38,7 @@ object PrayerAlarmScheduler {
         val today = LocalDate.now(zone)
         val nowMillis = System.currentTimeMillis()
 
-        // Cancel all existing 2-day prayer & kerahat alarms cleanly before scheduling fresh ones
+        // Cancel all existing 2-day prayer, kerahat & Friday alarms cleanly before scheduling fresh ones
         for (dayOffset in 0..1) {
             for (prayer in PrayerType.entries) {
                 cancelAlarm(appCtx, am, requestCode(dayOffset, prayer, 1), PrayerAlarmReceiver.ACTION_WARN_15)
@@ -47,6 +48,7 @@ object PrayerAlarmScheduler {
             for (kerahat in KerahatType.entries) {
                 cancelAlarm(appCtx, am, kerahatRequestCode(dayOffset, kerahat), PrayerAlarmReceiver.ACTION_KERAHAT_START)
             }
+            cancelAlarm(appCtx, am, fridayRequestCode(dayOffset), PrayerAlarmReceiver.ACTION_FRIDAY_REMINDER)
         }
 
         // Schedule today's remaining + tomorrow's prayers
@@ -135,6 +137,27 @@ object PrayerAlarmScheduler {
                         )
                         setAlarmCompat(appCtx, am, triggerMillis, pi)
                     }
+                }
+            }
+
+            // 5. Friday prayer (Cuma Namazı) reminder before Dhuhr on Fridays
+            if (settings.fridayReminderEnabled && targetDate.dayOfWeek == DayOfWeek.FRIDAY) {
+                val ogleZdt = prayerDay.zonedDateTime(PrayerType.OGLE)
+                val leadMins = settings.fridayReminderMinutesBefore.toLong()
+                val triggerFriday = ogleZdt.toInstant().toEpochMilli() - leadMins * 60_000L
+                if (triggerFriday > nowMillis + 2_000L) {
+                    val intent = Intent(appCtx, PrayerAlarmReceiver::class.java).apply {
+                        action = PrayerAlarmReceiver.ACTION_FRIDAY_REMINDER
+                        putExtra(PrayerAlarmReceiver.EXTRA_PRAYER_TIME_TEXT, ogleZdt.toLocalTime().format(TIME_FMT))
+                        putExtra(PrayerAlarmReceiver.EXTRA_FRIDAY_LEAD_MINUTES, settings.fridayReminderMinutesBefore)
+                    }
+                    val pi = PendingIntent.getBroadcast(
+                        appCtx,
+                        fridayRequestCode(dayOffset),
+                        intent,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    )
+                    setAlarmCompat(appCtx, am, triggerFriday, pi)
                 }
             }
         }
@@ -236,4 +259,7 @@ object PrayerAlarmScheduler {
 
     private fun kerahatRequestCode(dayOffset: Int, kerahat: KerahatType): Int =
         2500 + dayOffset * 10 + kerahat.ordinal
+
+    private fun fridayRequestCode(dayOffset: Int): Int =
+        2600 + dayOffset
 }

@@ -16,6 +16,7 @@ import com.namazvakti.app.R
 import com.namazvakti.app.domain.KerahatType
 import com.namazvakti.app.model.PrayerType
 import com.namazvakti.app.service.AdhanPlaybackService
+import com.namazvakti.app.widget.PrayerWidgetProvider
 
 class PrayerAlarmReceiver : BroadcastReceiver() {
 
@@ -66,6 +67,17 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
                     id = 3400 + kerahat.ordinal,
                     title = "${kerahat.title} Başladı ($rangeText)",
                     message = kerahat.fiqhNote
+                )
+            }
+
+            ACTION_FRIDAY_REMINDER -> {
+                val timeText = intent.getStringExtra(EXTRA_PRAYER_TIME_TEXT) ?: ""
+                val leadMins = intent.getIntExtra(EXTRA_FRIDAY_LEAD_MINUTES, settings.fridayReminderMinutesBefore)
+                postWarningNotification(
+                    context = context,
+                    id = 3500,
+                    title = "Hayırlı Cumalar • Cuma Namazına $leadMins dk Kaldı",
+                    message = "${settings.location.displayTitle} için Cuma (Öğle) vakti saat $timeText. Hazırlık hatırlatıcısı."
                 )
             }
 
@@ -121,6 +133,9 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
                 )
             }
         }
+
+        // Keep Home Screen Widget synchronized on every alarm/time/boot event
+        PrayerWidgetProvider.updateAll(context)
     }
 
     private fun postWarningNotification(context: Context, id: Int, title: String, message: String) {
@@ -155,6 +170,7 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
         const val ACTION_WARN_15 = "com.namazvakti.app.ACTION_WARN_15"
         const val ACTION_WARN_5 = "com.namazvakti.app.ACTION_WARN_5"
         const val ACTION_KERAHAT_START = "com.namazvakti.app.ACTION_KERAHAT_START"
+        const val ACTION_FRIDAY_REMINDER = "com.namazvakti.app.ACTION_FRIDAY_REMINDER"
         const val ACTION_PRAYER_TIME = "com.namazvakti.app.ACTION_PRAYER_TIME"
         const val ACTION_RESTORE_SOUND = "com.namazvakti.app.ACTION_RESTORE_SOUND"
         const val ACTION_MANUAL_RESTORE_SOUND = "com.namazvakti.app.ACTION_MANUAL_RESTORE_SOUND"
@@ -163,5 +179,6 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
         const val EXTRA_PRAYER_TYPE = "prayer_type"
         const val EXTRA_KERAHAT_TYPE = "kerahat_type"
         const val EXTRA_PRAYER_TIME_TEXT = "prayer_time_text"
+        const val EXTRA_FRIDAY_LEAD_MINUTES = "friday_lead_minutes"
     }
 }

@@ -8,6 +8,7 @@ import com.namazvakti.app.data.KazaRepository
 import com.namazvakti.app.data.LocationRepository
 import com.namazvakti.app.data.PrayerTimesRepository
 import com.namazvakti.app.data.SettingsRepository
+import com.namazvakti.app.widget.PrayerWidgetProvider
 
 class NamazApp : Application() {
 
@@ -34,5 +35,6 @@ class NamazApp : Application() {
             settings = settingsRepository.current(),
             prayerTimesRepository = prayerTimesRepository
         )
+        PrayerWidgetProvider.updateAll(this)
     }
 }

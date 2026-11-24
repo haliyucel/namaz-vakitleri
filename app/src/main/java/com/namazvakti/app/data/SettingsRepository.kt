@@ -52,6 +52,8 @@ class SettingsRepository(context: Context) {
             warn15MinEnabled = prefs.getBoolean(KEY_WARN_15, true),
             warn5MinEnabled = prefs.getBoolean(KEY_WARN_5, true),
             kerahatAlertEnabled = prefs.getBoolean(KEY_KERAHAT_ALERT, true),
+            fridayReminderEnabled = prefs.getBoolean(KEY_FRIDAY_REMINDER, true),
+            fridayReminderMinutesBefore = prefs.getInt(KEY_FRIDAY_MINUTES, 60).coerceIn(15, 180),
             alertEnabledPrayers = loadPrayerSet(KEY_ALERT_PRAYERS, PrayerType.entries.toSet()),
             adhanEnabled = prefs.getBoolean(KEY_ADHAN_ENABLED, true),
             adhanEnabledPrayers = loadPrayerSet(KEY_ADHAN_PRAYERS, PrayerType.ADHAN_PRAYERS.toSet()),
@@ -76,6 +78,8 @@ class SettingsRepository(context: Context) {
             .putBoolean(KEY_WARN_15, s.warn15MinEnabled)
             .putBoolean(KEY_WARN_5, s.warn5MinEnabled)
             .putBoolean(KEY_KERAHAT_ALERT, s.kerahatAlertEnabled)
+            .putBoolean(KEY_FRIDAY_REMINDER, s.fridayReminderEnabled)
+            .putInt(KEY_FRIDAY_MINUTES, s.fridayReminderMinutesBefore)
             .putStringSet(KEY_ALERT_PRAYERS, s.alertEnabledPrayers.map { it.name }.toSet())
             .putBoolean(KEY_ADHAN_ENABLED, s.adhanEnabled)
             .putStringSet(KEY_ADHAN_PRAYERS, s.adhanEnabledPrayers.map { it.name }.toSet())
@@ -105,6 +109,8 @@ class SettingsRepository(context: Context) {
         private const val KEY_WARN_15 = "warn_15"
         private const val KEY_WARN_5 = "warn_5"
         private const val KEY_KERAHAT_ALERT = "kerahat_alert"
+        private const val KEY_FRIDAY_REMINDER = "friday_reminder"
+        private const val KEY_FRIDAY_MINUTES = "friday_minutes"
         private const val KEY_ALERT_PRAYERS = "alert_prayers"
         private const val KEY_ADHAN_ENABLED = "adhan_enabled"
         private const val KEY_ADHAN_PRAYERS = "adhan_prayers"

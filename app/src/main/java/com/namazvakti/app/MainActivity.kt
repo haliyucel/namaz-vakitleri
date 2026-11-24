@@ -65,6 +65,7 @@ import com.namazvakti.app.ui.theme.NamazTheme
 import com.namazvakti.app.update.GitHubUpdateManager
 import com.namazvakti.app.update.UpdateCheckResult
 import com.namazvakti.app.update.UpdateUiState
+import com.namazvakti.app.widget.PrayerWidgetProvider
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
@@ -241,6 +242,7 @@ private fun NamazMainApp(activity: ComponentActivity, app: NamazApp) {
                 forceRefresh = forceRefresh
             )
             PrayerAlarmScheduler.rescheduleAll(activity, currentSettings, app.prayerTimesRepository)
+            PrayerWidgetProvider.updateAll(activity)
             isRefreshing = false
         }
     }
@@ -252,6 +254,7 @@ private fun NamazMainApp(activity: ComponentActivity, app: NamazApp) {
     fun updateAndReschedule(transform: (AppSettings) -> AppSettings) {
         val next = app.settingsRepository.update(transform)
         PrayerAlarmScheduler.rescheduleAll(activity, next, app.prayerTimesRepository)
+        PrayerWidgetProvider.updateAll(activity)
     }
 
     // Permission launchers
@@ -452,7 +455,17 @@ private fun NamazMainApp(activity: ComponentActivity, app: NamazApp) {
                     onStopAdhan = { AdhanPlaybackService.stop(activity) },
                     onOpenDndSettings = { openDndSettings() },
                     onTestWarningNotification = { sendTestWarningNotification() },
-                    onTestAutoSilent15Sec = { testAutoSilent15Sec() }
+                    onTestAutoSilent15Sec = { testAutoSilent15Sec() },
+                    onAddHomeWidget = {
+                        val pinned = PrayerWidgetProvider.requestPin(activity)
+                        if (!pinned) {
+                            Toast.makeText(
+                                activity,
+                                "Ana ekrana uzun basıp Widget'lar → Namaz Vakitleri seçeneğinden ekleyebilirsiniz.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
                 )
             }
         }

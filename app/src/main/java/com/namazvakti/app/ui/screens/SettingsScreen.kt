@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.VolumeOff
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.WarningAmber
+import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
@@ -63,7 +64,8 @@ fun SettingsScreen(
     onStopAdhan: () -> Unit,
     onOpenDndSettings: () -> Unit,
     onTestWarningNotification: () -> Unit,
-    onTestAutoSilent15Sec: () -> Unit
+    onTestAutoSilent15Sec: () -> Unit,
+    onAddHomeWidget: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -102,6 +104,32 @@ fun SettingsScreen(
                         onUpdateSettings { it.copy(kerahatAlertEnabled = enabled) }
                     }
                 )
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                SwitchRow(
+                    title = "Cuma namazı hatırlatıcısı",
+                    subtitle = "Cuma günleri öğle vaktinden ${settings.fridayReminderMinutesBefore} dk önce hatırlatır",
+                    checked = settings.fridayReminderEnabled,
+                    onCheckedChange = { enabled ->
+                        onUpdateSettings { it.copy(fridayReminderEnabled = enabled) }
+                    }
+                )
+                if (settings.fridayReminderEnabled) {
+                    Spacer(Modifier.height(6.dp))
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(30, 45, 60, 90).forEach { mins ->
+                            FilterChip(
+                                selected = settings.fridayReminderMinutesBefore == mins,
+                                onClick = {
+                                    onUpdateSettings { it.copy(fridayReminderMinutesBefore = mins) }
+                                },
+                                label = { Text("$mins dk önce") }
+                            )
+                        }
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = "Uyarı verilecek vakitler:",
@@ -401,6 +429,30 @@ fun SettingsScreen(
                             )
                         }
                     }
+                }
+            }
+        }
+
+        // 5. Home Screen Widget Quick Add
+        item {
+            SettingsSectionCard(
+                icon = Icons.Rounded.Widgets,
+                title = "Ana Ekran Widget'ı"
+            ) {
+                Text(
+                    text = "Uygulamayı açmadan telefonun ana ekranında sıradaki vakti, canlı geri sayımı, 6 vakit özetini ve aktif kerahat uyarısını görün.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(10.dp))
+                FilledTonalButton(
+                    onClick = onAddHomeWidget,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Rounded.Widgets, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Ana Ekrana Widget Ekle")
                 }
             }
         }
