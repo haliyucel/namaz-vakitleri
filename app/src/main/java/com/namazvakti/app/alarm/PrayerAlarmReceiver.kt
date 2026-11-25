@@ -117,6 +117,15 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
                 PrayerAlarmScheduler.rescheduleAll(context, settings, app.prayerTimesRepository)
             }
 
+            ACTION_TEST_ENTER_SILENT -> {
+                val durationSec = intent.getLongExtra(EXTRA_TEST_DURATION_SECONDS, 15L).coerceIn(5L, 120L)
+                AutoSilentManager.enterSilentMode(
+                    context = context,
+                    prayerName = "Test",
+                    durationSeconds = durationSec
+                )
+            }
+
             ACTION_RESTORE_SOUND -> {
                 AutoSilentManager.restoreSoundMode(
                     context = context,
@@ -172,6 +181,7 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
         const val ACTION_KERAHAT_START = "com.namazvakti.app.ACTION_KERAHAT_START"
         const val ACTION_FRIDAY_REMINDER = "com.namazvakti.app.ACTION_FRIDAY_REMINDER"
         const val ACTION_PRAYER_TIME = "com.namazvakti.app.ACTION_PRAYER_TIME"
+        const val ACTION_TEST_ENTER_SILENT = "com.namazvakti.app.ACTION_TEST_ENTER_SILENT"
         const val ACTION_RESTORE_SOUND = "com.namazvakti.app.ACTION_RESTORE_SOUND"
         const val ACTION_MANUAL_RESTORE_SOUND = "com.namazvakti.app.ACTION_MANUAL_RESTORE_SOUND"
         const val ACTION_RESCHEDULE_DAILY = "com.namazvakti.app.ACTION_RESCHEDULE_DAILY"
@@ -180,5 +190,6 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
         const val EXTRA_KERAHAT_TYPE = "kerahat_type"
         const val EXTRA_PRAYER_TIME_TEXT = "prayer_time_text"
         const val EXTRA_FRIDAY_LEAD_MINUTES = "friday_lead_minutes"
+        const val EXTRA_TEST_DURATION_SECONDS = "test_duration_seconds"
     }
 }

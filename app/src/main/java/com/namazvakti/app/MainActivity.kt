@@ -352,19 +352,17 @@ private fun NamazMainApp(activity: ComponentActivity, app: NamazApp) {
 
     fun testAutoSilent15Sec() {
         val hasFullPerm = AutoSilentManager.hasSilentModePermission(activity)
-        val ok = AutoSilentManager.enterSilentMode(
+        PrayerAlarmScheduler.scheduleSilentTest(
             context = activity,
-            prayerName = "Test",
-            durationSeconds = 15L
+            delaySeconds = 3L,
+            silentDurationSeconds = 15L
         )
-        if (ok) {
-            val msg = if (hasFullPerm) {
-                "Telefon sessiz moda alındı (Rahatsız Etme kapalı). 15 saniye sonra tekrar sesli olacak."
-            } else {
-                "Zil sesi kapatıldı (titreşim). Tam titreşimsiz sessiz mod için yukarıdan izin verebilirsiniz. 15 sn sonra sesli olacak."
-            }
-            Toast.makeText(activity, msg, Toast.LENGTH_LONG).show()
+        val msg = if (hasFullPerm) {
+            "3 sn sonra telefon sessize alınacak, 15 sn sonra tekrar sesliye dönecek (ekranı kapatıp arka planda test edebilirsiniz)."
+        } else {
+            "3 sn sonra zil sesi kapatılacak, 15 sn sonra sesliye dönecek. Tam titreşimsiz sessiz mod için yukarıdan izin verin."
         }
+        Toast.makeText(activity, msg, Toast.LENGTH_LONG).show()
     }
 
     Scaffold(

@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import com.namazvakti.app.MainActivity
 import com.namazvakti.app.data.PrayerTimesRepository
 import com.namazvakti.app.domain.KerahatCalculator
 import com.namazvakti.app.domain.KerahatType
@@ -19,6 +20,7 @@ object PrayerAlarmScheduler {
 
     private const val REQ_RESTORE_SOUND = 9901
     private const val REQ_DAILY_RESCHEDULE = 9902
+    private const val REQ_TEST_SILENT = 9903
     private val TIME_FMT = DateTimeFormatter.ofPattern("HH:mm")
 
     fun canScheduleExactAlarms(context: Context): Boolean {
@@ -175,6 +177,26 @@ object PrayerAlarmScheduler {
         setAlarmCompat(appCtx, am, nextMidnight, dailyPi)
     }
 
+    fun scheduleSilentTest(
+        context: Context,
+        delaySeconds: Long = 3L,
+        silentDurationSeconds: Long = 15L
+    ) {
+        val appCtx = context.applicationContext
+        val am = appCtx.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        val triggerAt = System.currentTimeMillis() + delaySeconds * 1000L
+        val pi = PendingIntent.getBroadcast(
+            appCtx,
+            REQ_TEST_SILENT,
+            Intent(appCtx, PrayerAlarmReceiver::class.java).apply {
+                action = PrayerAlarmReceiver.ACTION_TEST_ENTER_SILENT
+                putExtra(PrayerAlarmReceiver.EXTRA_TEST_DURATION_SECONDS, silentDurationSeconds)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        setAlarmCompat(appCtx, am, triggerAt, pi)
+    }
+
     fun scheduleRestoreSound(context: Context, triggerAtMillis: Long) {
         val appCtx = context.applicationContext
         val am = appCtx.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
@@ -244,10 +266,21 @@ object PrayerAlarmScheduler {
 
     private fun setAlarmCompat(context: Context, am: AlarmManager, triggerAtMillis: Long, pi: PendingIntent) {
         if (canScheduleExactAlarms(context)) {
+            // setAlarmClock guarantees exact wakeup even through Doze/Samsung Freecess AND grants FGS exemption
+            val showPi = PendingIntent.getActivity(
+                context,
+                9999,
+                Intent(context, MainActivity::class.java),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
             runCatching {
-                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
+                am.setAlarmClock(AlarmManager.AlarmClockInfo(triggerAtMillis, showPi), pi)
             }.onFailure {
-                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
+                runCatching {
+                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
+                }.onFailure {
+                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
+                }
             }
         } else {
             am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)

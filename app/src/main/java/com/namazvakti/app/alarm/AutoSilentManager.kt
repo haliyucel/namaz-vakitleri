@@ -13,6 +13,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.namazvakti.app.MainActivity
 import com.namazvakti.app.R
+import com.namazvakti.app.service.AutoSilentService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,6 +31,8 @@ data class AutoSilentStatus(
 /**
  * Silences the phone purely via AudioManager Silent Mode (RINGER_MODE_SILENT)
  * and ring/notification stream muting — WITHOUT turning on Do Not Disturb (Rahatsız Etme).
+ * Always delegates audio-mode transitions through AutoSilentService (mediaPlayback FGS)
+ * so Android 17+ Background Audio Hardening never silently drops the call.
  */
 object AutoSilentManager {
     private const val PREFS_NAME = "namaz_auto_silent_state"
@@ -65,10 +68,28 @@ object AutoSilentManager {
         return nm?.isNotificationPolicyAccessGranted == true
     }
 
+    /** Public entry point: runs inside AutoSilentService FGS for Android 17+ compatibility. */
     fun enterSilentMode(
         context: Context,
         prayerName: String,
         durationSeconds: Long
+    ): Boolean = AutoSilentService.startEnterSilent(context, prayerName, durationSeconds)
+
+    /** Public entry point: runs inside AutoSilentService FGS for Android 17+ compatibility. */
+    fun restoreSoundMode(
+        context: Context,
+        restoreAlwaysLoud: Boolean,
+        isManual: Boolean = false
+    ) {
+        AutoSilentService.startRestoreSound(context, restoreAlwaysLoud, isManual)
+    }
+
+    /** Executed directly from AutoSilentService while in active Foreground Service state. */
+    internal fun applySilentModeNow(
+        context: Context,
+        prayerName: String,
+        durationSeconds: Long,
+        postStandaloneNotification: Boolean
     ): Boolean {
         val appCtx = context.applicationContext
         val am = appCtx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return false
@@ -99,20 +120,21 @@ object AutoSilentManager {
         }
 
         // Put phone into pure Silent Mode (🔕) — NEVER enable Do Not Disturb (setInterruptionFilter)!
-        var silentApplied = false
+        var applied = false
         if (hasFullSilentPerm) {
-            silentApplied = runCatching {
+            runCatching {
                 am.ringerMode = AudioManager.RINGER_MODE_SILENT
-                true
-            }.getOrDefault(false)
+            }
+            applied = (am.ringerMode == AudioManager.RINGER_MODE_SILENT)
         }
 
-        if (!silentApplied) {
-            // Fallback without policy permission: mute ring/notification streams & switch to vibrate
+        if (!applied) {
+            // Fallback: mute streams & switch to vibrate if full silent permission not granted
             runCatching { am.setStreamVolume(AudioManager.STREAM_RING, 0, 0) }
             runCatching { am.setStreamVolume(AudioManager.STREAM_NOTIFICATION, 0, 0) }
             runCatching { am.setStreamVolume(AudioManager.STREAM_SYSTEM, 0, 0) }
             runCatching { am.ringerMode = AudioManager.RINGER_MODE_VIBRATE }
+            applied = (am.ringerMode != AudioManager.RINGER_MODE_NORMAL)
         }
 
         val restoreAt = System.currentTimeMillis() + (durationSeconds * 1000L)
@@ -133,15 +155,18 @@ object AutoSilentManager {
         )
 
         PrayerAlarmScheduler.scheduleRestoreSound(appCtx, restoreAt)
-        showOngoingSilentNotification(appCtx, prayerName, restoreAt)
-        return true
+        if (postStandaloneNotification) {
+            showOngoingSilentNotification(appCtx, prayerName, restoreAt)
+        }
+        return applied
     }
 
-    fun restoreSoundMode(
+    /** Executed directly from AutoSilentService while in active Foreground Service state. */
+    internal fun applyRestoreSoundNow(
         context: Context,
         restoreAlwaysLoud: Boolean,
-        isManual: Boolean = false
-    ) {
+        isManual: Boolean
+    ): Boolean {
         val appCtx = context.applicationContext
         val am = appCtx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         val prefs = appCtx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -160,6 +185,7 @@ object AutoSilentManager {
         PrayerAlarmScheduler.cancelRestoreSound(appCtx)
         NotificationManagerCompat.from(appCtx).cancel(NOTIFICATION_ID_SILENT)
 
+        var restored = false
         if (am != null) {
             val targetRinger = if (restoreAlwaysLoud) AudioManager.RINGER_MODE_NORMAL else prevRinger
             runCatching { am.ringerMode = targetRinger }
@@ -173,11 +199,13 @@ object AutoSilentManager {
                 runCatching { am.setStreamVolume(AudioManager.STREAM_NOTIFICATION, notifTarget, 0) }
                 runCatching { am.setStreamVolume(AudioManager.STREAM_SYSTEM, sysTarget, 0) }
             }
+            restored = (am.ringerMode == targetRinger)
         }
 
         if (!isManual) {
             showRestoredNotification(appCtx)
         }
+        return restored
     }
 
     /** Called on reboot: ensures the phone never stays stuck in silent mode. */
@@ -187,7 +215,8 @@ object AutoSilentManager {
         if (!active) return
         val restoreAt = prefs.getLong(KEY_RESTORE_AT, 0L)
         val prayer = prefs.getString(KEY_PRAYER_NAME, "Namaz") ?: "Namaz"
-        if (restoreAt <= System.currentTimeMillis()) {
+        val remainingSec = ((restoreAt - System.currentTimeMillis()) / 1000L)
+        if (remainingSec <= 0L) {
             restoreSoundMode(context, restoreAlwaysLoud, isManual = false)
         } else {
             _status.value = AutoSilentStatus(true, prayer, restoreAt)
@@ -213,11 +242,13 @@ object AutoSilentManager {
             Intent(context, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val restoreIntent = PendingIntent.getBroadcast(
+        val restoreIntent = PendingIntent.getForegroundService(
             context,
             4202,
-            Intent(context, PrayerAlarmReceiver::class.java).apply {
-                action = PrayerAlarmReceiver.ACTION_MANUAL_RESTORE_SOUND
+            Intent(context, AutoSilentService::class.java).apply {
+                action = AutoSilentService.ACTION_RESTORE_SOUND
+                putExtra(AutoSilentService.EXTRA_RESTORE_ALWAYS_LOUD, true)
+                putExtra(AutoSilentService.EXTRA_IS_MANUAL, true)
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )

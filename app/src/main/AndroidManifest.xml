@@ -49,6 +49,11 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
+        <service
+            android:name=".service.AutoSilentService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
         <receiver
             android:name=".alarm.PrayerAlarmReceiver"
             android:enabled="true"
