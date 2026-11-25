@@ -27,21 +27,24 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Calculate
 import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Clear
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.MenuBook
+import androidx.compose.material.icons.rounded.NightlightRound
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Undo
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -88,7 +91,9 @@ import com.namazvakti.app.ui.theme.EmeraldLight
 import com.namazvakti.app.ui.theme.EmeraldPrimary
 import com.namazvakti.app.ui.theme.GoldAccent
 import com.namazvakti.app.ui.theme.GoldSoft
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Locale
@@ -141,13 +146,14 @@ fun RehberScreen(kazaRepository: KazaRepository) {
 }
 
 // =========================================================================
-// 1. KAZA NAMAZI HESAPLAYICI VE TAKİP
+// 1. KAZA NAMAZI VE ORUÇ HESAPLAYICI + TAKİP
 // =========================================================================
 @Composable
 private fun KazaCalculatorTab(
     state: KazaTrackerState,
     repository: KazaRepository
 ) {
+    val haptic = LocalHapticFeedback.current
     var calcMode by remember { mutableIntStateOf(0) } // 0 = Süreye göre, 1 = Yaşa göre
     var yearsInput by remember { mutableStateOf("1") }
     var monthsInput by remember { mutableStateOf("0") }
@@ -155,8 +161,18 @@ private fun KazaCalculatorTab(
     var pubertyAgeInput by remember { mutableStateOf("12") }
     var startAgeInput by remember { mutableStateOf("20") }
     var exemptDaysPerMonth by remember { mutableIntStateOf(0) }
-    var calculatorExpanded by remember { mutableStateOf(state.totalRemainingPrayers == 0) }
+    var calculatorExpanded by remember { mutableStateOf(state.totalRemainingPrayers == 0 && state.fastingDays == 0) }
+    var historyExpanded by remember { mutableStateOf(false) }
     var showResetConfirm by remember { mutableStateOf(false) }
+
+    // Direct debt edit dialogs
+    var editingPrayer by remember { mutableStateOf<KazaPrayerType?>(null) }
+    var editingPrayerText by remember { mutableStateOf("") }
+    var showFastingEditDialog by remember { mutableStateOf(false) }
+    var fastingEditText by remember { mutableStateOf("") }
+
+    val trLocale = remember { Locale("tr", "TR") }
+    val historyDateFmt = remember { DateTimeFormatter.ofPattern("d MMM HH:mm", trLocale) }
 
     val preview = remember(
         calcMode, yearsInput, monthsInput, daysInput, pubertyAgeInput, startAgeInput, exemptDaysPerMonth
@@ -182,7 +198,7 @@ private fun KazaCalculatorTab(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Summary Hero Card
+        // 1. Summary Hero Card (Both Kaza Namazı & Kaza Orucu + Today + Undo)
         item {
             Box(
                 modifier = Modifier
@@ -191,26 +207,51 @@ private fun KazaCalculatorTab(
                     .background(Brush.linearGradient(listOf(EmeraldDeep, EmeraldPrimary, EmeraldLight)))
                     .padding(18.dp)
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.Top
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Toplam Kalan Kaza Namazı",
-                                color = Color.White.copy(alpha = 0.85f),
-                                style = MaterialTheme.typography.labelMedium
+                                text = "Kalan Kaza Namazı",
+                                color = Color.White.copy(alpha = 0.8f),
+                                style = MaterialTheme.typography.labelSmall
                             )
                             Text(
-                                text = String.format(Locale("tr", "TR"), "%,d vakit", state.totalRemainingPrayers),
+                                text = String.format(trLocale, "%,d vakit", state.totalRemainingPrayers),
                                 color = Color.White,
-                                style = MaterialTheme.typography.headlineMedium,
+                                style = MaterialTheme.typography.headlineSmall,
                                 fontWeight = FontWeight.Bold
                             )
+                            Text(
+                                text = "Kılınan: ${state.completedPrayers}",
+                                color = GoldSoft,
+                                style = MaterialTheme.typography.labelSmall
+                            )
                         }
-                        if (state.totalRemainingPrayers > 0 || state.fastingDays > 0 || state.completedPrayers > 0) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Kalan Kaza Orucu",
+                                color = Color.White.copy(alpha = 0.8f),
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                            Text(
+                                text = String.format(trLocale, "%,d gün", state.fastingDays),
+                                color = Color.White,
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Tutulan: ${state.completedFastingDays}",
+                                color = GoldSoft,
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                        if (state.totalRemainingPrayers > 0 || state.fastingDays > 0 ||
+                            state.completedPrayers > 0 || state.completedFastingDays > 0
+                        ) {
                             IconButton(onClick = { showResetConfirm = true }) {
                                 Icon(
                                     imageVector = Icons.Rounded.DeleteOutline,
@@ -218,6 +259,22 @@ private fun KazaCalculatorTab(
                                     tint = Color.White.copy(alpha = 0.85f)
                                 )
                             }
+                        }
+                    }
+
+                    // Today's completed badge
+                    if (state.todayCompletedPrayers > 0 || state.todayCompletedFasts > 0) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color.White.copy(alpha = 0.16f)
+                        ) {
+                            Text(
+                                text = "Bugün yerine getirilen: ${state.todayCompletedPrayers} namaz • ${state.todayCompletedFasts} oruç",
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                            )
                         }
                     }
 
@@ -233,7 +290,7 @@ private fun KazaCalculatorTab(
 
                     if (state.completedPrayers > 0) {
                         LinearProgressIndicator(
-                            progress = { state.completionFraction },
+                            progress = { state.prayerCompletionFraction },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(6.dp)
@@ -241,29 +298,44 @@ private fun KazaCalculatorTab(
                             color = GoldSoft,
                             trackColor = Color.White.copy(alpha = 0.2f)
                         )
-                        Text(
-                            text = "Tamamlanan: ${state.completedPrayers} vakit (%${(state.completionFraction * 100f).roundToInt()})",
-                            color = Color.White.copy(alpha = 0.85f),
-                            style = MaterialTheme.typography.labelSmall
-                        )
                     }
 
+                    // Quick action buttons
                     if (state.totalRemainingPrayers > 0) {
-                        Spacer(Modifier.height(2.dp))
                         FilledTonalButton(
-                            onClick = { repository.completeOneFullDay() },
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                repository.completeOneFullDay()
+                            },
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("1 Günlük Kaza Kıldım (-1 Hepsi)")
+                            Text("1 Günlük Namaz Kıldım (Borçtan -6 Düş)")
+                        }
+                    }
+
+                    if (state.canUndo) {
+                        OutlinedButton(
+                            onClick = { repository.undoLastAction() },
+                            modifier = Modifier.fillMaxWidth(),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.45f))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Undo,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("Son İşlemi Geri Al", color = Color.White)
                         }
                     }
                 }
             }
         }
 
-        // Expandable Calculator Card
+        // 2. Expandable Prayer Debt Calculator Card
         item {
             Card(
                 shape = RoundedCornerShape(18.dp),
@@ -352,7 +424,6 @@ private fun KazaCalculatorTab(
                                 }
                             }
 
-                            // Optional monthly exemption days (for women)
                             Column {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -378,7 +449,6 @@ private fun KazaCalculatorTab(
                                 )
                             }
 
-                            // Result preview box
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = MaterialTheme.colorScheme.primaryContainer
@@ -440,10 +510,10 @@ private fun KazaCalculatorTab(
             }
         }
 
-        // 6 Prayer Kaza Rows
+        // 3. 6 Prayer Kaza Tracking Cards (Clear "Kıldım (-1)" + Direct Debt Edit)
         item {
             Text(
-                text = "Vakit Bazlı Kaza Takibi",
+                text = "Vakit Bazlı Kaza Namazı Takibi",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold
             )
@@ -468,91 +538,307 @@ private fun KazaCalculatorTab(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = prayer.rekats,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = "${prayer.rekats} • Kalan: $count",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (count > 0) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = if (count > 0) FontWeight.SemiBold else FontWeight.Normal
                         )
                     }
-                    FilledTonalIconButton(
-                        onClick = { repository.adjustPrayer(prayer, -1) },
-                        enabled = count > 0,
-                        modifier = Modifier.size(36.dp)
+                    IconButton(
+                        onClick = {
+                            editingPrayer = prayer
+                            editingPrayerText = count.toString()
+                        }
                     ) {
-                        Icon(Icons.Rounded.Remove, contentDescription = "Kıldım (-1)", modifier = Modifier.size(18.dp))
+                        Icon(
+                            imageVector = Icons.Rounded.Edit,
+                            contentDescription = "Borç düzenle",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(19.dp)
+                        )
                     }
-                    Text(
-                        text = count.toString(),
-                        style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.width(64.dp)
-                    )
-                    FilledTonalIconButton(
-                        onClick = { repository.adjustPrayer(prayer, +1) },
-                        modifier = Modifier.size(36.dp)
+                    Button(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            repository.fulfillPrayer(prayer, count = 1)
+                        },
+                        enabled = count > 0,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(Icons.Rounded.Add, contentDescription = "Ekle (+1)", modifier = Modifier.size(18.dp))
+                        Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Kıldım", style = MaterialTheme.typography.labelMedium)
                     }
                 }
             }
         }
 
-        // Kaza Orucu Card
+        // 4. Dedicated Kaza Orucu Tracking Card
         item {
             Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.45f))
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Kaza Orucu",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Rounded.NightlightRound,
+                            contentDescription = null,
+                            tint = GoldAccent
                         )
-                        Text(
-                            text = "Tutulacak kaza orucu gün sayısı",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        Spacer(Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Kaza Orucu Takibi",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Kalan: ${state.fastingDays} gün • Tutulan: ${state.completedFastingDays} gün",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                fastingEditText = ""
+                                showFastingEditDialog = true
+                            },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Borç Ekle", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+
+                    if (state.completedFastingDays > 0 || state.fastingDays > 0) {
+                        LinearProgressIndicator(
+                            progress = { state.fastingCompletionFraction },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(50)),
+                            color = GoldAccent
                         )
                     }
-                    FilledTonalIconButton(
-                        onClick = { repository.adjustFastingDays(-1) },
+
+                    Button(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            repository.fulfillFastingDay(1)
+                        },
                         enabled = state.fastingDays > 0,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(Icons.Rounded.Remove, contentDescription = "Azalt", modifier = Modifier.size(18.dp))
-                    }
-                    Text(
-                        text = "${state.fastingDays} gün",
-                        style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = "tnum"),
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.width(64.dp)
-                    )
-                    FilledTonalIconButton(
-                        onClick = { repository.adjustFastingDays(+1) },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(Icons.Rounded.Add, contentDescription = "Artır", modifier = Modifier.size(18.dp))
+                        Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("1 Gün Kaza Orucu Tuttum (Borçtan Düş)")
                     }
                 }
             }
         }
+
+        // 5. Recent Fulfillment History (Collapsible)
+        if (state.history.isNotEmpty()) {
+            item {
+                Card(
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { historyExpanded = !historyExpanded },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.History,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "Son Takip Geçmişi (${state.history.size})",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(
+                                imageVector = if (historyExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                                contentDescription = null
+                            )
+                        }
+
+                        AnimatedVisibility(visible = historyExpanded) {
+                            Column(
+                                modifier = Modifier.padding(top = 10.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                state.history.take(15).forEachIndexed { idx, entry ->
+                                    if (idx > 0) {
+                                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                                    }
+                                    val timeStr = Instant.ofEpochMilli(entry.timestampMillis)
+                                        .atZone(ZoneId.systemDefault())
+                                        .format(historyDateFmt)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = entry.title,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                            Text(
+                                                text = timeStr,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Surface(
+                                            shape = RoundedCornerShape(50),
+                                            color = if (entry.isFulfillment) MaterialTheme.colorScheme.primaryContainer
+                                            else MaterialTheme.colorScheme.surfaceVariant
+                                        ) {
+                                            Text(
+                                                text = entry.badge,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (entry.isFulfillment) MaterialTheme.colorScheme.primary
+                                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         item { Spacer(Modifier.height(8.dp)) }
+    }
+
+    // Prayer Debt Edit Dialog
+    val targetPrayer = editingPrayer
+    if (targetPrayer != null) {
+        AlertDialog(
+            onDismissRequest = { editingPrayer = null },
+            title = { Text("${targetPrayer.displayName} Kaza Borcu") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = editingPrayerText,
+                        onValueChange = { editingPrayerText = it.filter { c -> c.isDigit() }.take(5) },
+                        singleLine = true,
+                        label = { Text("Kalan borç adedi") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(1, 10, 30).forEach { delta ->
+                            FilterChip(
+                                selected = false,
+                                onClick = {
+                                    val cur = editingPrayerText.toIntOrNull() ?: 0
+                                    editingPrayerText = (cur + delta).toString()
+                                },
+                                label = { Text("+$delta") }
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val next = editingPrayerText.toIntOrNull() ?: 0
+                        repository.setPrayerDebt(targetPrayer, next)
+                        editingPrayer = null
+                    }
+                ) { Text("Kaydet") }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingPrayer = null }) { Text("İptal") }
+            }
+        )
+    }
+
+    // Fasting Debt Add / Set Dialog
+    if (showFastingEditDialog) {
+        AlertDialog(
+            onDismissRequest = { showFastingEditDialog = false },
+            title = { Text("Kaza Orucu Borcu Ekle") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = fastingEditText,
+                        onValueChange = { fastingEditText = it.filter { c -> c.isDigit() }.take(4) },
+                        singleLine = true,
+                        label = { Text("Eklenecek / ayarlanacak gün sayısı") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(1, 7, 30).forEach { add ->
+                            FilterChip(
+                                selected = false,
+                                onClick = {
+                                    val cur = fastingEditText.toIntOrNull() ?: 0
+                                    fastingEditText = (cur + add).toString()
+                                },
+                                label = { Text("+$add gün") }
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val days = fastingEditText.toIntOrNull() ?: 0
+                        if (days > 0) repository.addFastingDebt(days, replaceExisting = false)
+                        showFastingEditDialog = false
+                    },
+                    enabled = (fastingEditText.toIntOrNull() ?: 0) > 0
+                ) { Text("Borca Ekle") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        onClick = {
+                            val days = fastingEditText.toIntOrNull() ?: 0
+                            repository.addFastingDebt(days, replaceExisting = true)
+                            showFastingEditDialog = false
+                        }
+                    ) { Text("Sıfırdan Ayarla") }
+                    TextButton(onClick = { showFastingEditDialog = false }) { Text("İptal") }
+                }
+            }
+        )
     }
 
     if (showResetConfirm) {
         AlertDialog(
             onDismissRequest = { showResetConfirm = false },
             title = { Text("Kaza Kayıtlarını Sıfırla") },
-            text = { Text("Tüm kaza namazı ve kaza orucu sayaçları sıfırlansın mı?") },
+            text = { Text("Tüm kaza namazı, kaza orucu ve geçmiş kayıtları sıfırlansın mı?") },
             confirmButton = {
                 Button(
                     onClick = {
