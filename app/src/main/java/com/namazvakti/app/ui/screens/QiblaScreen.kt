@@ -56,6 +56,9 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.namazvakti.app.domain.QiblaCalculator
 import com.namazvakti.app.model.LocationInfo
 import com.namazvakti.app.ui.theme.EmeraldLight
@@ -98,8 +101,9 @@ fun QiblaScreen(location: LocationInfo) {
     var trueHeading by remember { mutableDoubleStateOf(0.0) }
     var sensorAccuracy by remember { mutableIntStateOf(SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM) }
     var hasCompassSensor by remember { mutableStateOf(true) }
+    val lifecycleOwner = LocalLifecycleOwner.current
 
-    DisposableEffect(context, magneticDeclination) {
+    DisposableEffect(context, lifecycleOwner, magneticDeclination) {
         val sm = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         val rotationSensor = sm.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
         val accelSensor = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
@@ -120,6 +124,7 @@ fun QiblaScreen(location: LocationInfo) {
         var smoothSin = 0.0
         var smoothCos = 1.0
         var initialized = false
+        var isRegistered = false
 
         fun updateHeading(magneticAzimuthDeg: Double) {
             val trueDeg = ((magneticAzimuthDeg + magneticDeclination) % 360.0 + 360.0) % 360.0
@@ -170,14 +175,39 @@ fun QiblaScreen(location: LocationInfo) {
             }
         }
 
-        if (rotationSensor != null) {
-            sm.registerListener(listener, rotationSensor, SensorManager.SENSOR_DELAY_UI)
-        } else {
-            sm.registerListener(listener, accelSensor, SensorManager.SENSOR_DELAY_UI)
-            sm.registerListener(listener, magSensor, SensorManager.SENSOR_DELAY_UI)
+        fun registerSensors() {
+            if (isRegistered) return
+            if (rotationSensor != null) {
+                sm.registerListener(listener, rotationSensor, SensorManager.SENSOR_DELAY_UI)
+            } else {
+                sm.registerListener(listener, accelSensor, SensorManager.SENSOR_DELAY_UI)
+                sm.registerListener(listener, magSensor, SensorManager.SENSOR_DELAY_UI)
+            }
+            isRegistered = true
         }
 
-        onDispose { sm.unregisterListener(listener) }
+        fun unregisterSensors() {
+            if (!isRegistered) return
+            sm.unregisterListener(listener)
+            isRegistered = false
+        }
+
+        val lifecycleObserver = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> registerSensors()
+                Lifecycle.Event.ON_PAUSE -> unregisterSensors()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(lifecycleObserver)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            registerSensors()
+        }
+
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(lifecycleObserver)
+            unregisterSensors()
+        }
     }
 
     val angleDiff = QiblaCalculator.signedAngleDifference(trueHeading, qiblaBearing)

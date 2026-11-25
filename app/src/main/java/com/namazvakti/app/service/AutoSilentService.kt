@@ -48,7 +48,8 @@ class AutoSilentService : Service() {
                     buildOngoingSilentNotification(prayerName, restoreAtMillis)
                 )
 
-                // Wait briefly after startForeground so ActivityManager/AppOps updates UID foreground state
+                // Wait briefly after startForeground so ActivityManager/AppOps updates UID foreground state,
+                // then immediately detach notification & stop service so FGS does NOT stay alive for 20 minutes!
                 val task = Runnable {
                     val ok = AutoSilentManager.applySilentModeNow(
                         context = this,
@@ -67,7 +68,10 @@ class AutoSilentService : Service() {
                                 postStandaloneNotification = false
                             )
                             Log.i(TAG, "applySilentModeNow retry -> ok=$retryOk")
+                            finishServiceKeepingNotification()
                         }, 450L)
+                    } else {
+                        handler.postDelayed({ finishServiceKeepingNotification() }, 300L)
                     }
                 }
                 pendingRunnable = task
@@ -170,6 +174,13 @@ class AutoSilentService : Service() {
             .setContentText("Telefon sesi geri açılıyor...")
             .setSilent(true)
             .build()
+
+    private fun finishServiceKeepingNotification() {
+        pendingRunnable?.let { handler.removeCallbacks(it) }
+        pendingRunnable = null
+        stopForeground(STOP_FOREGROUND_DETACH)
+        stopSelf()
+    }
 
     private fun finishService() {
         pendingRunnable?.let { handler.removeCallbacks(it) }

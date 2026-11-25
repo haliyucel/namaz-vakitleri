@@ -69,7 +69,7 @@ object PrayerAlarmScheduler {
 
                 val alertEnabled = prayer in settings.alertEnabledPrayers
 
-                // 1. 15-minute first warning
+                // 1. 15-minute first warning (notification-only -> lighter exact alarm)
                 if (settings.warn15MinEnabled && alertEnabled) {
                     val trigger15 = prayerMillis - 15L * 60_000L
                     if (trigger15 > nowMillis + 2_000L) {
@@ -80,12 +80,13 @@ object PrayerAlarmScheduler {
                             action = PrayerAlarmReceiver.ACTION_WARN_15,
                             prayer = prayer,
                             prayerTimeText = timeStr,
-                            triggerAtMillis = trigger15
+                            triggerAtMillis = trigger15,
+                            useAlarmClock = false
                         )
                     }
                 }
 
-                // 2. 5-minute second warning
+                // 2. 5-minute second warning (notification-only -> lighter exact alarm)
                 if (settings.warn5MinEnabled && alertEnabled) {
                     val trigger5 = prayerMillis - 5L * 60_000L
                     if (trigger5 > nowMillis + 2_000L) {
@@ -96,16 +97,17 @@ object PrayerAlarmScheduler {
                             action = PrayerAlarmReceiver.ACTION_WARN_5,
                             prayer = prayer,
                             prayerTimeText = timeStr,
-                            triggerAtMillis = trigger5
+                            triggerAtMillis = trigger5,
+                            useAlarmClock = false
                         )
                     }
                 }
 
-                // 3. Prayer time arrival (Adhan + Auto-Silent + Arrival notification)
-                val needsArrival =
+                // 3. Prayer time arrival (Adhan + Auto-Silent FGS -> AlarmClock for Android 17 reliability)
+                val needsFgs =
                     (settings.adhanEnabled && prayer.hasAdhan && prayer in settings.adhanEnabledPrayers) ||
-                        (settings.autoSilentEnabled && prayer in settings.autoSilentPrayers) ||
-                        alertEnabled
+                        (settings.autoSilentEnabled && prayer in settings.autoSilentPrayers)
+                val needsArrival = needsFgs || alertEnabled
 
                 if (needsArrival && prayerMillis > nowMillis + 2_000L) {
                     scheduleExact(
@@ -115,12 +117,13 @@ object PrayerAlarmScheduler {
                         action = PrayerAlarmReceiver.ACTION_PRAYER_TIME,
                         prayer = prayer,
                         prayerTimeText = timeStr,
-                        triggerAtMillis = prayerMillis
+                        triggerAtMillis = prayerMillis,
+                        useAlarmClock = needsFgs
                     )
                 }
             }
 
-            // 4. Kerahat start alerts (Sabah / Öğle / Akşam kerahat windows)
+            // 4. Kerahat start alerts (notification-only -> lighter exact alarm)
             if (settings.kerahatAlertEnabled) {
                 for (window in KerahatCalculator.calculateWindows(prayerDay)) {
                     val triggerMillis = window.startZdt.toInstant().toEpochMilli()
@@ -137,12 +140,12 @@ object PrayerAlarmScheduler {
                             intent,
                             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                         )
-                        setAlarmCompat(appCtx, am, triggerMillis, pi)
+                        setAlarmCompat(appCtx, am, triggerMillis, pi, useAlarmClock = false)
                     }
                 }
             }
 
-            // 5. Friday prayer (Cuma Namazı) reminder before Dhuhr on Fridays
+            // 5. Friday prayer (Cuma Namazı) reminder (notification-only -> lighter exact alarm)
             if (settings.fridayReminderEnabled && targetDate.dayOfWeek == DayOfWeek.FRIDAY) {
                 val ogleZdt = prayerDay.zonedDateTime(PrayerType.OGLE)
                 val leadMins = settings.fridayReminderMinutesBefore.toLong()
@@ -159,12 +162,12 @@ object PrayerAlarmScheduler {
                         intent,
                         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                     )
-                    setAlarmCompat(appCtx, am, triggerFriday, pi)
+                    setAlarmCompat(appCtx, am, triggerFriday, pi, useAlarmClock = false)
                 }
             }
         }
 
-        // Daily rollover reschedule at 00:05 tomorrow
+        // Daily rollover reschedule at 00:05 tomorrow (lightweight exact alarm)
         val nextMidnight = today.plusDays(1).atTime(0, 5).atZone(zone).toInstant().toEpochMilli()
         val dailyPi = PendingIntent.getBroadcast(
             appCtx,
@@ -174,7 +177,7 @@ object PrayerAlarmScheduler {
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        setAlarmCompat(appCtx, am, nextMidnight, dailyPi)
+        setAlarmCompat(appCtx, am, nextMidnight, dailyPi, useAlarmClock = false)
     }
 
     fun scheduleSilentTest(
@@ -194,7 +197,7 @@ object PrayerAlarmScheduler {
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        setAlarmCompat(appCtx, am, triggerAt, pi)
+        setAlarmCompat(appCtx, am, triggerAt, pi, useAlarmClock = true)
     }
 
     fun scheduleRestoreSound(context: Context, triggerAtMillis: Long) {
@@ -208,7 +211,7 @@ object PrayerAlarmScheduler {
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        setAlarmCompat(appCtx, am, triggerAtMillis, pi)
+        setAlarmCompat(appCtx, am, triggerAtMillis, pi, useAlarmClock = true)
     }
 
     fun cancelRestoreSound(context: Context) {
@@ -235,7 +238,8 @@ object PrayerAlarmScheduler {
         action: String,
         prayer: PrayerType,
         prayerTimeText: String,
-        triggerAtMillis: Long
+        triggerAtMillis: Long,
+        useAlarmClock: Boolean
     ) {
         val intent = Intent(context, PrayerAlarmReceiver::class.java).apply {
             this.action = action
@@ -248,7 +252,7 @@ object PrayerAlarmScheduler {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        setAlarmCompat(context, am, triggerAtMillis, pi)
+        setAlarmCompat(context, am, triggerAtMillis, pi, useAlarmClock = useAlarmClock)
     }
 
     private fun cancelAlarm(context: Context, am: AlarmManager, reqCode: Int, action: String) {
@@ -264,18 +268,33 @@ object PrayerAlarmScheduler {
         }
     }
 
-    private fun setAlarmCompat(context: Context, am: AlarmManager, triggerAtMillis: Long, pi: PendingIntent) {
+    private fun setAlarmCompat(
+        context: Context,
+        am: AlarmManager,
+        triggerAtMillis: Long,
+        pi: PendingIntent,
+        useAlarmClock: Boolean
+    ) {
         if (canScheduleExactAlarms(context)) {
-            // setAlarmClock guarantees exact wakeup even through Doze/Samsung Freecess AND grants FGS exemption
-            val showPi = PendingIntent.getActivity(
-                context,
-                9999,
-                Intent(context, MainActivity::class.java),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            runCatching {
-                am.setAlarmClock(AlarmManager.AlarmClockInfo(triggerAtMillis, showPi), pi)
-            }.onFailure {
+            if (useAlarmClock) {
+                // Only FGS-launching alarms use setAlarmClock (required for Android 17 AudioHardening / BFGS)
+                val showPi = PendingIntent.getActivity(
+                    context,
+                    9999,
+                    Intent(context, MainActivity::class.java),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                runCatching {
+                    am.setAlarmClock(AlarmManager.AlarmClockInfo(triggerAtMillis, showPi), pi)
+                }.onFailure {
+                    runCatching {
+                        am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
+                    }.onFailure {
+                        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
+                    }
+                }
+            } else {
+                // Lighter exact alarm for notification-only alerts (preserves Deep Doze battery)
                 runCatching {
                     am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
                 }.onFailure {

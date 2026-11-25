@@ -49,6 +49,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.namazvakti.app.alarm.AutoSilentManager
 import com.namazvakti.app.alarm.NotificationChannels
 import com.namazvakti.app.alarm.PrayerAlarmScheduler
@@ -189,11 +190,15 @@ private fun NamazMainApp(activity: ComponentActivity, app: NamazApp) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // 1-second live clock ticker
-    LaunchedEffect(Unit) {
-        while (true) {
-            nowMillis = System.currentTimeMillis()
-            delay(1000L)
+    // 1-second live clock ticker: pauses automatically in background & on tabs without a live countdown
+    LaunchedEffect(lifecycleOwner, selectedTab) {
+        if (selectedTab == AppTab.TIMES.ordinal) {
+            lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    nowMillis = System.currentTimeMillis()
+                    delay(1000L)
+                }
+            }
         }
     }
 

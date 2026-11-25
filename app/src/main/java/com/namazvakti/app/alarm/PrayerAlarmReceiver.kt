@@ -143,8 +143,20 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
             }
         }
 
-        // Keep Home Screen Widget synchronized on every alarm/time/boot event
-        PrayerWidgetProvider.updateAll(context)
+        // Update Home Screen Widget only when prayer/kerahat/date/time actually changed
+        if (action in setOf(
+                Intent.ACTION_BOOT_COMPLETED,
+                Intent.ACTION_LOCKED_BOOT_COMPLETED,
+                Intent.ACTION_TIME_CHANGED,
+                Intent.ACTION_TIMEZONE_CHANGED,
+                Intent.ACTION_MY_PACKAGE_REPLACED,
+                ACTION_RESCHEDULE_DAILY,
+                ACTION_PRAYER_TIME,
+                ACTION_KERAHAT_START
+            )
+        ) {
+            PrayerWidgetProvider.updateAll(context)
+        }
     }
 
     private fun postWarningNotification(context: Context, id: Int, title: String, message: String) {
