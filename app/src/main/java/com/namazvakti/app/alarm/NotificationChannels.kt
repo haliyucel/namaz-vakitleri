@@ -31,10 +31,10 @@ object NotificationChannels {
 
         val warnings = NotificationChannel(
             CHANNEL_WARNINGS,
-            "Ezan Öncesi Uyarılar (15 dk / 5 dk)",
+            "Ezan ve Kerahat Uyarıları",
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "Ezan vaktine 15 dakika ve 5 dakika kala gönderilen hatırlatma uyarıları"
+            description = "Ezan öncesi (15 dk / 5 dk), Cuma ve kerahat vakti uyarıları ile canlı geri sayım bildirimleri"
             enableVibration(true)
             vibrationPattern = longArrayOf(0, 280, 140, 280)
             setSound(warningSound, warningAttrs)

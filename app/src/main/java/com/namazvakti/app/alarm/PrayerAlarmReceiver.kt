@@ -39,51 +39,120 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
             ACTION_WARN_15 -> {
                 val prayer = PrayerType.fromNameOrNull(intent.getStringExtra(EXTRA_PRAYER_TYPE)) ?: return
                 val timeText = intent.getStringExtra(EXTRA_PRAYER_TIME_TEXT) ?: ""
-                postWarningNotification(
-                    context = context,
-                    id = 3100 + prayer.ordinal,
-                    title = "${prayer.displayName} Vaktine 15 Dakika Kaldı",
-                    message = "${prayer.displayName} vakti saat $timeText. Hazırlık için 1. uyarı."
-                )
+                val targetMillis = intent.getLongExtra(EXTRA_TARGET_TIME_MILLIS, 0L)
+                if (targetMillis > 0L) {
+                    CountdownNotificationHelper.postCountdownNotification(
+                        context = context,
+                        id = CountdownNotificationHelper.prayerWarningId(prayer),
+                        title = "${prayer.displayName} Vaktine Kalan",
+                        subtitle = "Saat $timeText • 15 dk uyarısı",
+                        detail = "${prayer.displayName} vakti saat $timeText. Hazırlık için 1. uyarı; vakit girene kadar geri sayar.",
+                        targetWallMillis = targetMillis,
+                        style = CountdownNotificationStyle.PRAYER
+                    )
+                } else {
+                    postWarningNotification(
+                        context = context,
+                        id = CountdownNotificationHelper.prayerWarningId(prayer),
+                        title = "${prayer.displayName} Vaktine 15 Dakika Kaldı",
+                        message = "${prayer.displayName} vakti saat $timeText. Hazırlık için 1. uyarı."
+                    )
+                }
             }
 
             ACTION_WARN_5 -> {
                 val prayer = PrayerType.fromNameOrNull(intent.getStringExtra(EXTRA_PRAYER_TYPE)) ?: return
                 val timeText = intent.getStringExtra(EXTRA_PRAYER_TIME_TEXT) ?: ""
-                postWarningNotification(
-                    context = context,
-                    id = 3200 + prayer.ordinal,
-                    title = "${prayer.displayName} Vaktine 5 Dakika Kaldı!",
-                    message = "${prayer.displayName} vakti saat $timeText. 2. ve son uyarı."
-                )
+                val targetMillis = intent.getLongExtra(EXTRA_TARGET_TIME_MILLIS, 0L)
+                if (targetMillis > 0L) {
+                    CountdownNotificationHelper.postCountdownNotification(
+                        context = context,
+                        id = CountdownNotificationHelper.prayerWarningId(prayer),
+                        title = "${prayer.displayName} Vaktine Kalan",
+                        subtitle = "Saat $timeText • 5 dk son uyarı!",
+                        detail = "${prayer.displayName} vakti saat $timeText. 2. ve son uyarı; vakit girene kadar geri sayar.",
+                        targetWallMillis = targetMillis,
+                        style = CountdownNotificationStyle.PRAYER
+                    )
+                } else {
+                    postWarningNotification(
+                        context = context,
+                        id = CountdownNotificationHelper.prayerWarningId(prayer),
+                        title = "${prayer.displayName} Vaktine 5 Dakika Kaldı!",
+                        message = "${prayer.displayName} vakti saat $timeText. 2. ve son uyarı."
+                    )
+                }
             }
 
             ACTION_KERAHAT_START -> {
                 val kerahatName = intent.getStringExtra(EXTRA_KERAHAT_TYPE) ?: return
                 val kerahat = KerahatType.entries.firstOrNull { it.name == kerahatName } ?: return
                 val rangeText = intent.getStringExtra(EXTRA_PRAYER_TIME_TEXT) ?: ""
-                postWarningNotification(
-                    context = context,
-                    id = 3400 + kerahat.ordinal,
-                    title = "${kerahat.title} Başladı ($rangeText)",
-                    message = kerahat.fiqhNote
-                )
+                val endText = intent.getStringExtra(EXTRA_KERAHAT_END_TEXT) ?: ""
+                val targetMillis = intent.getLongExtra(EXTRA_TARGET_TIME_MILLIS, 0L)
+                if (targetMillis > 0L) {
+                    val subtitle = if (endText.isNotEmpty()) {
+                        "Çıkış: $endText ($rangeText)"
+                    } else {
+                        rangeText
+                    }
+                    CountdownNotificationHelper.postCountdownNotification(
+                        context = context,
+                        id = CountdownNotificationHelper.kerahatId(kerahat),
+                        title = "${kerahat.title} Çıkmasına Kalan",
+                        subtitle = subtitle,
+                        detail = "${kerahat.fiqhNote} ($rangeText)",
+                        targetWallMillis = targetMillis,
+                        style = CountdownNotificationStyle.KERAHAT
+                    )
+                } else {
+                    postWarningNotification(
+                        context = context,
+                        id = CountdownNotificationHelper.kerahatId(kerahat),
+                        title = "${kerahat.title} Başladı ($rangeText)",
+                        message = kerahat.fiqhNote
+                    )
+                }
+            }
+
+            ACTION_KERAHAT_END -> {
+                val kerahatName = intent.getStringExtra(EXTRA_KERAHAT_TYPE)
+                val kerahat = KerahatType.entries.firstOrNull { it.name == kerahatName }
+                if (kerahat != null) {
+                    CountdownNotificationHelper.cancelKerahatCountdown(context, kerahat)
+                }
             }
 
             ACTION_FRIDAY_REMINDER -> {
                 val timeText = intent.getStringExtra(EXTRA_PRAYER_TIME_TEXT) ?: ""
                 val leadMins = intent.getIntExtra(EXTRA_FRIDAY_LEAD_MINUTES, settings.fridayReminderMinutesBefore)
-                postWarningNotification(
-                    context = context,
-                    id = 3500,
-                    title = "Hayırlı Cumalar • Cuma Namazına $leadMins dk Kaldı",
-                    message = "${settings.location.displayTitle} için Cuma (Öğle) vakti saat $timeText. Hazırlık hatırlatıcısı."
-                )
+                val targetMillis = intent.getLongExtra(EXTRA_TARGET_TIME_MILLIS, 0L)
+                if (targetMillis > 0L) {
+                    CountdownNotificationHelper.postCountdownNotification(
+                        context = context,
+                        id = CountdownNotificationHelper.FRIDAY_REMINDER_ID,
+                        title = "Cuma Namazına Kalan",
+                        subtitle = "Öğle vakti $timeText • Hayırlı Cumalar",
+                        detail = "${settings.location.displayTitle} için Cuma (Öğle) vakti saat $timeText ($leadMins dk hazırlık hatırlatıcısı).",
+                        targetWallMillis = targetMillis,
+                        style = CountdownNotificationStyle.PRAYER
+                    )
+                } else {
+                    postWarningNotification(
+                        context = context,
+                        id = CountdownNotificationHelper.FRIDAY_REMINDER_ID,
+                        title = "Hayırlı Cumalar • Cuma Namazına $leadMins dk Kaldı",
+                        message = "${settings.location.displayTitle} için Cuma (Öğle) vakti saat $timeText. Hazırlık hatırlatıcısı."
+                    )
+                }
             }
 
             ACTION_PRAYER_TIME -> {
                 val prayer = PrayerType.fromNameOrNull(intent.getStringExtra(EXTRA_PRAYER_TYPE)) ?: return
                 val timeText = intent.getStringExtra(EXTRA_PRAYER_TIME_TEXT) ?: ""
+
+                // Clear pre-prayer & ending kerahat countdown notifications immediately on prayer arrival
+                CountdownNotificationHelper.cancelPrayerCountdown(context, prayer)
 
                 // 1. Auto-silent at prayer arrival (silences ringtones/notifications, allows Alarm-stream Adhan)
                 val silenced = if (settings.autoSilentEnabled && prayer in settings.autoSilentPrayers) {
@@ -152,7 +221,8 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
                 Intent.ACTION_MY_PACKAGE_REPLACED,
                 ACTION_RESCHEDULE_DAILY,
                 ACTION_PRAYER_TIME,
-                ACTION_KERAHAT_START
+                ACTION_KERAHAT_START,
+                ACTION_KERAHAT_END
             )
         ) {
             PrayerWidgetProvider.updateAll(context)
@@ -191,6 +261,7 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
         const val ACTION_WARN_15 = "com.namazvakti.app.ACTION_WARN_15"
         const val ACTION_WARN_5 = "com.namazvakti.app.ACTION_WARN_5"
         const val ACTION_KERAHAT_START = "com.namazvakti.app.ACTION_KERAHAT_START"
+        const val ACTION_KERAHAT_END = "com.namazvakti.app.ACTION_KERAHAT_END"
         const val ACTION_FRIDAY_REMINDER = "com.namazvakti.app.ACTION_FRIDAY_REMINDER"
         const val ACTION_PRAYER_TIME = "com.namazvakti.app.ACTION_PRAYER_TIME"
         const val ACTION_TEST_ENTER_SILENT = "com.namazvakti.app.ACTION_TEST_ENTER_SILENT"
@@ -201,6 +272,8 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
         const val EXTRA_PRAYER_TYPE = "prayer_type"
         const val EXTRA_KERAHAT_TYPE = "kerahat_type"
         const val EXTRA_PRAYER_TIME_TEXT = "prayer_time_text"
+        const val EXTRA_KERAHAT_END_TEXT = "kerahat_end_text"
+        const val EXTRA_TARGET_TIME_MILLIS = "target_time_millis"
         const val EXTRA_FRIDAY_LEAD_MINUTES = "friday_lead_minutes"
         const val EXTRA_TEST_DURATION_SECONDS = "test_duration_seconds"
     }

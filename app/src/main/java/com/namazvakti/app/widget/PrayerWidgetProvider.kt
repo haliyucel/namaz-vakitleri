@@ -95,28 +95,34 @@ class PrayerWidgetProvider : AppWidgetProvider() {
                 }
             }
 
-            val remainingMillis = Duration.between(nowZdt, nextZdt).toMillis().coerceAtLeast(1_000L)
             val activeKerahat = KerahatCalculator.findActiveWindow(today, nowZdt)
+            val countdownTargetZdt = activeKerahat?.endZdt ?: nextZdt
+            val remainingMillis = Duration.between(nowZdt, countdownTargetZdt).toMillis().coerceAtLeast(1_000L)
 
             val views = RemoteViews(context.packageName, R.layout.widget_prayer_times)
 
-            // Background & status badge (turns amber when inside Kerahat time!)
+            views.setTextViewText(R.id.widget_location, settings.location.displayTitle)
+
+            // Background, status badge & countdown target (counts down Kerahat exit while inside Kerahat!)
             if (activeKerahat != null) {
                 views.setInt(R.id.widget_root, "setBackgroundResource", R.drawable.bg_widget_kerahat)
                 views.setTextViewText(R.id.widget_badge, "⚠ ${activeKerahat.type.title}")
                 views.setTextColor(R.id.widget_badge, Color.parseColor("#FFF0A8"))
+                views.setTextViewText(R.id.widget_next_label, "${activeKerahat.type.title} Çıkmasına Kalan")
+                views.setTextViewText(
+                    R.id.widget_next_time,
+                    "Çıkış ${activeKerahat.end.format(TIME_FMT)} • Sıradaki: ${nextPrayer.displayName} ${nextZdt.toLocalTime().format(TIME_FMT)}"
+                )
             } else {
                 views.setInt(R.id.widget_root, "setBackgroundResource", R.drawable.bg_widget_emerald)
                 views.setTextViewText(R.id.widget_badge, today.hijriDateText)
                 views.setTextColor(R.id.widget_badge, Color.parseColor("#F6DF9E"))
+                views.setTextViewText(R.id.widget_next_label, "${nextPrayer.displayName} Vaktine Kalan")
+                views.setTextViewText(
+                    R.id.widget_next_time,
+                    "${nextPrayer.displayName} • ${nextZdt.toLocalTime().format(TIME_FMT)}"
+                )
             }
-
-            views.setTextViewText(R.id.widget_location, settings.location.displayTitle)
-            views.setTextViewText(R.id.widget_next_label, "${nextPrayer.displayName} Vaktine Kalan")
-            views.setTextViewText(
-                R.id.widget_next_time,
-                "${nextPrayer.displayName} • ${nextZdt.toLocalTime().format(TIME_FMT)}"
-            )
 
             // Native ticking countdown chronometer (zero battery drain)
             val baseElapsed = SystemClock.elapsedRealtime() + remainingMillis

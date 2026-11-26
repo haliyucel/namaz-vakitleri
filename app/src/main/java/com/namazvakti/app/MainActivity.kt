@@ -43,15 +43,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.namazvakti.app.alarm.AutoSilentManager
-import com.namazvakti.app.alarm.NotificationChannels
+import com.namazvakti.app.alarm.CountdownNotificationHelper
+import com.namazvakti.app.alarm.CountdownNotificationStyle
 import com.namazvakti.app.alarm.PrayerAlarmScheduler
 import com.namazvakti.app.data.GpsDetectionResult
 import com.namazvakti.app.model.AppSettings
@@ -339,20 +338,35 @@ private fun NamazMainApp(activity: ComponentActivity, app: NamazApp) {
             notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             return
         }
-        val notif = NotificationCompat.Builder(activity, NotificationChannels.CHANNEL_WARNINGS)
-            .setSmallIcon(R.drawable.ic_stat_mosque)
-            .setContentTitle("Test: Ezan Vaktine 15 Dakika Kaldı")
-            .setContentText("Özel uyarı tonu ve bildirimler sorunsuz çalışıyor.")
-            .setSound(NotificationChannels.warningSoundUri(activity))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .build()
-        runCatching {
-            val nm = NotificationManagerCompat.from(activity)
-            nm.cancel(7777)
-            nm.notify(7777, notif)
+        val targetMillis = System.currentTimeMillis() + 15L * 60_000L
+        CountdownNotificationHelper.postCountdownNotification(
+            context = activity,
+            id = CountdownNotificationHelper.TEST_PRAYER_COUNTDOWN_ID,
+            title = "Test • Ezan Vaktine Kalan",
+            subtitle = "15 dk uyarısı • Bildirimde canlı geri sayım",
+            detail = "Özel uyarı tonu ve ezan vaktine kadar canlı geri sayım bildirimi sorunsuz çalışıyor.",
+            targetWallMillis = targetMillis,
+            style = CountdownNotificationStyle.PRAYER
+        )
+        Toast.makeText(activity, "Ezan geri sayım testi gönderildi.", Toast.LENGTH_SHORT).show()
+    }
+
+    fun sendTestKerahatNotification() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !permissions.hasNotification) {
+            notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            return
         }
-        Toast.makeText(activity, "Test uyarısı gönderildi.", Toast.LENGTH_SHORT).show()
+        val targetMillis = System.currentTimeMillis() + 45L * 60_000L
+        CountdownNotificationHelper.postCountdownNotification(
+            context = activity,
+            id = CountdownNotificationHelper.TEST_KERAHAT_COUNTDOWN_ID,
+            title = "Test • Kerahat Çıkmasına Kalan",
+            subtitle = "45 dk kerahat süresi • Çıkana kadar geri sayar",
+            detail = "Kerahat vakti başladığında bildirim ekranında çıkana kadar canlı geri sayım gösterilir.",
+            targetWallMillis = targetMillis,
+            style = CountdownNotificationStyle.KERAHAT
+        )
+        Toast.makeText(activity, "Kerahat geri sayım testi gönderildi.", Toast.LENGTH_SHORT).show()
     }
 
     fun testAutoSilent15Sec() {
@@ -458,6 +472,7 @@ private fun NamazMainApp(activity: ComponentActivity, app: NamazApp) {
                     onStopAdhan = { AdhanPlaybackService.stop(activity) },
                     onOpenDndSettings = { openDndSettings() },
                     onTestWarningNotification = { sendTestWarningNotification() },
+                    onTestKerahatNotification = { sendTestKerahatNotification() },
                     onTestAutoSilent15Sec = { testAutoSilent15Sec() },
                     onAddHomeWidget = {
                         val pinned = PrayerWidgetProvider.requestPin(activity)

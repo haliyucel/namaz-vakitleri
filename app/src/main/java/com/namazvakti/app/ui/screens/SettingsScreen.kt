@@ -64,6 +64,7 @@ fun SettingsScreen(
     onStopAdhan: () -> Unit,
     onOpenDndSettings: () -> Unit,
     onTestWarningNotification: () -> Unit,
+    onTestKerahatNotification: () -> Unit,
     onTestAutoSilent15Sec: () -> Unit,
     onAddHomeWidget: () -> Unit
 ) {
@@ -80,7 +81,7 @@ fun SettingsScreen(
             ) {
                 SwitchRow(
                     title = "15 dakika önce 1. uyarı",
-                    subtitle = "Ezan vaktine 15 dk kala bildirim ve sesle uyarır",
+                    subtitle = "Ezan vaktine 15 dk kala uyarır ve bildirimde vakte kadar geri sayar",
                     checked = settings.warn15MinEnabled,
                     onCheckedChange = { enabled ->
                         onUpdateSettings { it.copy(warn15MinEnabled = enabled) }
@@ -89,7 +90,7 @@ fun SettingsScreen(
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                 SwitchRow(
                     title = "5 dakika önce 2. uyarı",
-                    subtitle = "Ezan vaktine 5 dk kala ikinci hatırlatmayı yapar",
+                    subtitle = "Ezan vaktine 5 dk kala son uyarıyı verir ve bildirimde geri sayar",
                     checked = settings.warn5MinEnabled,
                     onCheckedChange = { enabled ->
                         onUpdateSettings { it.copy(warn5MinEnabled = enabled) }
@@ -98,7 +99,7 @@ fun SettingsScreen(
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                 SwitchRow(
                     title = "Kerahat vakti girdiğinde uyar",
-                    subtitle = "Sabah, Öğle ve Akşam kerahat vakti başladığında bildirim verir",
+                    subtitle = "Sabah, Öğle ve Akşam kerahat vakti başladığında uyarır ve çıkana kadar geri sayar",
                     checked = settings.kerahatAlertEnabled,
                     onCheckedChange = { enabled ->
                         onUpdateSettings { it.copy(kerahatAlertEnabled = enabled) }
@@ -157,12 +158,24 @@ fun SettingsScreen(
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                OutlinedButton(
-                    onClick = onTestWarningNotification,
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("Uyarı Bildirimini Test Et")
+                    OutlinedButton(
+                        onClick = onTestWarningNotification,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Ezan Uyarısı Test", maxLines = 1)
+                    }
+                    OutlinedButton(
+                        onClick = onTestKerahatNotification,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Kerahat Test", maxLines = 1)
+                    }
                 }
             }
         }

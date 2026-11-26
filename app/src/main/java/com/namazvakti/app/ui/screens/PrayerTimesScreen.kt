@@ -469,6 +469,7 @@ fun PrayerTimesScreen(
                 KerahatScheduleCard(
                     windows = kerahatWindows,
                     activeWindow = if (!showTomorrow) activeKerahat else null,
+                    nowZdt = nowZdt,
                     timeFmt = timeFmt
                 )
             }
@@ -548,7 +549,7 @@ private fun HeroCountdownCard(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
@@ -566,10 +567,35 @@ private fun HeroCountdownCard(
                                 fontWeight = FontWeight.ExtraBold
                             )
                             Text(
-                                text = "${activeKerahat.start.format(timeFmt)}-${activeKerahat.end.format(timeFmt)} • Bitimine ${String.format(Locale.US, "%02d:%02d", remMin, remSec)} • ${activeKerahat.type.fiqhNote}",
+                                text = "${activeKerahat.start.format(timeFmt)}-${activeKerahat.end.format(timeFmt)} • ${activeKerahat.type.fiqhNote}",
                                 color = Color.White.copy(alpha = 0.92f),
                                 style = MaterialTheme.typography.labelSmall
                             )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color.Black.copy(alpha = 0.28f)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = String.format(Locale.US, "%02d:%02d", remMin, remSec),
+                                    color = Color(0xFFFFF0A8),
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontFeatureSettings = "tnum"
+                                    ),
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                                Text(
+                                    text = "Çıkışa",
+                                    color = Color.White.copy(alpha = 0.85f),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 10.sp
+                                )
+                            }
                         }
                     }
                 }
@@ -840,6 +866,7 @@ private fun PrayerRowCard(
 private fun KerahatScheduleCard(
     windows: List<KerahatWindow>,
     activeWindow: KerahatWindow?,
+    nowZdt: ZonedDateTime,
     timeFmt: DateTimeFormatter
 ) {
     Card(
@@ -884,18 +911,23 @@ private fun KerahatScheduleCard(
                                 fontWeight = if (isNow) FontWeight.Bold else FontWeight.SemiBold,
                                 color = if (isNow) AmberWarn else MaterialTheme.colorScheme.onSurface
                             )
-                            if (isNow) {
+                            if (isNow && activeWindow != null) {
+                                val rem = activeWindow.remainingDuration(nowZdt)
+                                val remMin = rem.toMinutes()
+                                val remSec = rem.seconds % 60
                                 Spacer(Modifier.width(6.dp))
                                 Surface(
                                     color = AmberWarn,
                                     shape = RoundedCornerShape(50)
                                 ) {
                                     Text(
-                                        text = "Aktif",
+                                        text = String.format(Locale.US, "Aktif • %02d:%02d", remMin, remSec),
                                         color = Color.White,
-                                        style = MaterialTheme.typography.labelSmall,
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontFeatureSettings = "tnum"
+                                        ),
                                         fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 1.dp)
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 1.dp)
                                     )
                                 }
                             }

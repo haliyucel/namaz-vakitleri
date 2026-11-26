@@ -141,6 +141,10 @@ class AutoSilentService : Service() {
                         .format(DateTimeFormatter.ofPattern("HH:mm"))
                 } saatinde tekrar sesli moda geçecek."
             )
+            .setWhen(restoreAtMillis)
+            .setShowWhen(true)
+            .setUsesChronometer(true)
+            .setChronometerCountDown(true)
             .setOngoing(true)
             .setSilent(true)
             .setContentIntent(

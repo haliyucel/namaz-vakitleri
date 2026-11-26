@@ -49,6 +49,7 @@ object PrayerAlarmScheduler {
             }
             for (kerahat in KerahatType.entries) {
                 cancelAlarm(appCtx, am, kerahatRequestCode(dayOffset, kerahat), PrayerAlarmReceiver.ACTION_KERAHAT_START)
+                cancelAlarm(appCtx, am, kerahatEndRequestCode(dayOffset, kerahat), PrayerAlarmReceiver.ACTION_KERAHAT_END)
             }
             cancelAlarm(appCtx, am, fridayRequestCode(dayOffset), PrayerAlarmReceiver.ACTION_FRIDAY_REMINDER)
         }
@@ -69,7 +70,7 @@ object PrayerAlarmScheduler {
 
                 val alertEnabled = prayer in settings.alertEnabledPrayers
 
-                // 1. 15-minute first warning (notification-only -> lighter exact alarm)
+                // 1. 15-minute first warning (notification-only -> lighter exact alarm, live countdown to prayer)
                 if (settings.warn15MinEnabled && alertEnabled) {
                     val trigger15 = prayerMillis - 15L * 60_000L
                     if (trigger15 > nowMillis + 2_000L) {
@@ -81,12 +82,13 @@ object PrayerAlarmScheduler {
                             prayer = prayer,
                             prayerTimeText = timeStr,
                             triggerAtMillis = trigger15,
+                            targetTimeMillis = prayerMillis,
                             useAlarmClock = false
                         )
                     }
                 }
 
-                // 2. 5-minute second warning (notification-only -> lighter exact alarm)
+                // 2. 5-minute second warning (notification-only -> lighter exact alarm, live countdown to prayer)
                 if (settings.warn5MinEnabled && alertEnabled) {
                     val trigger5 = prayerMillis - 5L * 60_000L
                     if (trigger5 > nowMillis + 2_000L) {
@@ -98,6 +100,7 @@ object PrayerAlarmScheduler {
                             prayer = prayer,
                             prayerTimeText = timeStr,
                             triggerAtMillis = trigger5,
+                            targetTimeMillis = prayerMillis,
                             useAlarmClock = false
                         )
                     }
@@ -118,43 +121,64 @@ object PrayerAlarmScheduler {
                         prayer = prayer,
                         prayerTimeText = timeStr,
                         triggerAtMillis = prayerMillis,
+                        targetTimeMillis = prayerMillis,
                         useAlarmClock = needsFgs
                     )
                 }
             }
 
-            // 4. Kerahat start alerts (notification-only -> lighter exact alarm)
-            if (settings.kerahatAlertEnabled) {
-                for (window in KerahatCalculator.calculateWindows(prayerDay)) {
-                    val triggerMillis = window.startZdt.toInstant().toEpochMilli()
-                    if (triggerMillis > nowMillis + 2_000L) {
-                        val rangeText = "${window.start.format(TIME_FMT)} - ${window.end.format(TIME_FMT)}"
-                        val intent = Intent(appCtx, PrayerAlarmReceiver::class.java).apply {
-                            action = PrayerAlarmReceiver.ACTION_KERAHAT_START
-                            putExtra(PrayerAlarmReceiver.EXTRA_KERAHAT_TYPE, window.type.name)
-                            putExtra(PrayerAlarmReceiver.EXTRA_PRAYER_TIME_TEXT, rangeText)
-                        }
-                        val pi = PendingIntent.getBroadcast(
-                            appCtx,
-                            kerahatRequestCode(dayOffset, window.type),
-                            intent,
-                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                        )
-                        setAlarmCompat(appCtx, am, triggerMillis, pi, useAlarmClock = false)
+            // 4. Kerahat start & end alarms (live countdown until Kerahat ends + clean widget/notif exit)
+            for (window in KerahatCalculator.calculateWindows(prayerDay)) {
+                val startMillis = window.startZdt.toInstant().toEpochMilli()
+                val endMillis = window.endZdt.toInstant().toEpochMilli()
+                val rangeText = "${window.start.format(TIME_FMT)} - ${window.end.format(TIME_FMT)}"
+                val endText = window.end.format(TIME_FMT)
+
+                if (settings.kerahatAlertEnabled && startMillis > nowMillis + 2_000L) {
+                    val intent = Intent(appCtx, PrayerAlarmReceiver::class.java).apply {
+                        action = PrayerAlarmReceiver.ACTION_KERAHAT_START
+                        putExtra(PrayerAlarmReceiver.EXTRA_KERAHAT_TYPE, window.type.name)
+                        putExtra(PrayerAlarmReceiver.EXTRA_PRAYER_TIME_TEXT, rangeText)
+                        putExtra(PrayerAlarmReceiver.EXTRA_KERAHAT_END_TEXT, endText)
+                        putExtra(PrayerAlarmReceiver.EXTRA_TARGET_TIME_MILLIS, endMillis)
                     }
+                    val pi = PendingIntent.getBroadcast(
+                        appCtx,
+                        kerahatRequestCode(dayOffset, window.type),
+                        intent,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    )
+                    setAlarmCompat(appCtx, am, startMillis, pi, useAlarmClock = false)
+                }
+
+                // Schedule end alarm to clear Kerahat countdown & switch widget back (essential for Sabah İşrak!)
+                if ((settings.kerahatAlertEnabled || window.type == KerahatType.SABAH) && endMillis > nowMillis + 2_000L) {
+                    val endIntent = Intent(appCtx, PrayerAlarmReceiver::class.java).apply {
+                        action = PrayerAlarmReceiver.ACTION_KERAHAT_END
+                        putExtra(PrayerAlarmReceiver.EXTRA_KERAHAT_TYPE, window.type.name)
+                    }
+                    val endPi = PendingIntent.getBroadcast(
+                        appCtx,
+                        kerahatEndRequestCode(dayOffset, window.type),
+                        endIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    )
+                    setAlarmCompat(appCtx, am, endMillis, endPi, useAlarmClock = false)
                 }
             }
 
-            // 5. Friday prayer (Cuma Namazı) reminder (notification-only -> lighter exact alarm)
+            // 5. Friday prayer (Cuma Namazı) reminder (notification-only -> live countdown until Öğle)
             if (settings.fridayReminderEnabled && targetDate.dayOfWeek == DayOfWeek.FRIDAY) {
                 val ogleZdt = prayerDay.zonedDateTime(PrayerType.OGLE)
+                val ogleMillis = ogleZdt.toInstant().toEpochMilli()
                 val leadMins = settings.fridayReminderMinutesBefore.toLong()
-                val triggerFriday = ogleZdt.toInstant().toEpochMilli() - leadMins * 60_000L
+                val triggerFriday = ogleMillis - leadMins * 60_000L
                 if (triggerFriday > nowMillis + 2_000L) {
                     val intent = Intent(appCtx, PrayerAlarmReceiver::class.java).apply {
                         action = PrayerAlarmReceiver.ACTION_FRIDAY_REMINDER
                         putExtra(PrayerAlarmReceiver.EXTRA_PRAYER_TIME_TEXT, ogleZdt.toLocalTime().format(TIME_FMT))
                         putExtra(PrayerAlarmReceiver.EXTRA_FRIDAY_LEAD_MINUTES, settings.fridayReminderMinutesBefore)
+                        putExtra(PrayerAlarmReceiver.EXTRA_TARGET_TIME_MILLIS, ogleMillis)
                     }
                     val pi = PendingIntent.getBroadcast(
                         appCtx,
@@ -239,12 +263,14 @@ object PrayerAlarmScheduler {
         prayer: PrayerType,
         prayerTimeText: String,
         triggerAtMillis: Long,
+        targetTimeMillis: Long,
         useAlarmClock: Boolean
     ) {
         val intent = Intent(context, PrayerAlarmReceiver::class.java).apply {
             this.action = action
             putExtra(PrayerAlarmReceiver.EXTRA_PRAYER_TYPE, prayer.name)
             putExtra(PrayerAlarmReceiver.EXTRA_PRAYER_TIME_TEXT, prayerTimeText)
+            putExtra(PrayerAlarmReceiver.EXTRA_TARGET_TIME_MILLIS, targetTimeMillis)
         }
         val pi = PendingIntent.getBroadcast(
             context,
@@ -311,6 +337,9 @@ object PrayerAlarmScheduler {
 
     private fun kerahatRequestCode(dayOffset: Int, kerahat: KerahatType): Int =
         2500 + dayOffset * 10 + kerahat.ordinal
+
+    private fun kerahatEndRequestCode(dayOffset: Int, kerahat: KerahatType): Int =
+        2550 + dayOffset * 10 + kerahat.ordinal
 
     private fun fridayRequestCode(dayOffset: Int): Int =
         2600 + dayOffset
