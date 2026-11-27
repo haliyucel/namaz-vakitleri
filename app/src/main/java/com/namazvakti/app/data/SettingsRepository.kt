@@ -75,7 +75,7 @@ class SettingsRepository(context: Context) {
             fridayReminderEnabled = prefs.getBoolean(KEY_FRIDAY_REMINDER, true),
             fridayReminderMinutesBefore = prefs.getInt(KEY_FRIDAY_MINUTES, 60).coerceIn(15, 180),
             alertEnabledPrayers = loadPrayerSet(KEY_ALERT_PRAYERS, PrayerType.entries.toSet()),
-            adhanEnabled = prefs.getBoolean(KEY_ADHAN_ENABLED, true),
+            adhanEnabled = prefs.getBoolean(KEY_ADHAN_ENABLED, false),
             adhanEnabledPrayers = loadPrayerSet(KEY_ADHAN_PRAYERS, PrayerType.ADHAN_PRAYERS.toSet()),
             autoSilentEnabled = prefs.getBoolean(KEY_AUTO_SILENT_ENABLED, true),
             autoSilentDurationMinutes = legacySilentMinutes,

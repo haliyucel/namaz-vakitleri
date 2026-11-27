@@ -1,10 +1,16 @@
 package com.namazvakti.app.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import java.time.DayOfWeek
 
 class AppSettingsSilentDurationTest {
+
+    @Test
+    fun adhanRecitationDefaultsToDisabled() {
+        assertFalse(AppSettings().adhanEnabled)
+    }
 
     @Test
     fun usesRecommendedPerPrayerDefaultsAndFridayOverride() {

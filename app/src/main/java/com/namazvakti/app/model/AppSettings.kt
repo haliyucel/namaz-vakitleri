@@ -11,7 +11,7 @@ data class AppSettings(
     val fridayReminderEnabled: Boolean = true,
     val fridayReminderMinutesBefore: Int = 60,
     val alertEnabledPrayers: Set<PrayerType> = PrayerType.entries.toSet(),
-    val adhanEnabled: Boolean = true,
+    val adhanEnabled: Boolean = false,
     val adhanEnabledPrayers: Set<PrayerType> = PrayerType.ADHAN_PRAYERS.toSet(),
     val autoSilentEnabled: Boolean = true,
     val autoSilentDurationMinutes: Int = 20,
