@@ -451,6 +451,10 @@ fun PrayerTimesScreen(
             val isNextToday = !showTomorrow && !countdownInfo.isTomorrow && countdownInfo.nextPrayer == prayer
             val isPassedToday = !showTomorrow && time != null &&
                 displayedDay.zonedDateTime(prayer).isBefore(nowZdt) && !isNextToday
+            val hasSilent = settings.autoSilentEnabled && prayer in settings.autoSilentPrayers
+            val silentMinutes = if (hasSilent) {
+                settings.silentDurationFor(prayer, displayedDay.date.dayOfWeek)
+            } else null
 
             PrayerRowCard(
                 prayer = prayer,
@@ -459,7 +463,8 @@ fun PrayerTimesScreen(
                 isPassed = isPassedToday,
                 hasWarn = (settings.warn15MinEnabled || settings.warn5MinEnabled) && prayer in settings.alertEnabledPrayers,
                 hasAdhan = settings.adhanEnabled && prayer.hasAdhan && prayer in settings.adhanEnabledPrayers,
-                hasSilent = settings.autoSilentEnabled && prayer in settings.autoSilentPrayers
+                hasSilent = hasSilent,
+                silentDurationMinutes = silentMinutes
             )
         }
 
@@ -494,7 +499,18 @@ fun PrayerTimesScreen(
                     if (settings.warn5MinEnabled) add("5 dk uyarı")
                     if (settings.kerahatAlertEnabled) add("Kerahat uyarısı")
                     if (settings.adhanEnabled) add("Ezan açık")
-                    if (settings.autoSilentEnabled) add("${settings.autoSilentDurationMinutes} dk otomatik sessiz")
+                    if (settings.autoSilentEnabled && settings.autoSilentPrayers.isNotEmpty()) {
+                        val activeMins = settings.autoSilentPrayers.map {
+                            settings.silentDurationFor(it, displayedDay.date.dayOfWeek)
+                        }
+                        val minM = activeMins.minOrNull() ?: settings.autoSilentDurationMinutes
+                        val maxM = activeMins.maxOrNull() ?: settings.autoSilentDurationMinutes
+                        if (minM == maxM) {
+                            add("$minM dk otomatik sessiz")
+                        } else {
+                            add("Vakite göre sessiz ($minM-$maxM dk)")
+                        }
+                    }
                 }.joinToString(" • ")
                 if (summary.isNotEmpty()) {
                     Text(
@@ -749,7 +765,8 @@ private fun PrayerRowCard(
     isPassed: Boolean,
     hasWarn: Boolean,
     hasAdhan: Boolean,
-    hasSilent: Boolean
+    hasSilent: Boolean,
+    silentDurationMinutes: Int?
 ) {
     val containerColor = when {
         isHighlighted -> MaterialTheme.colorScheme.primaryContainer
@@ -811,11 +828,17 @@ private fun PrayerRowCard(
                         }
                     }
                 }
-                if (prayer.makamName != null && hasAdhan) {
+                val subtitleParts = buildList {
+                    if (prayer.makamName != null && hasAdhan) add(prayer.makamName)
+                    if (hasSilent && silentDurationMinutes != null) add("$silentDurationMinutes dk sessiz")
+                }
+                if (subtitleParts.isNotEmpty()) {
                     Text(
-                        text = prayer.makamName,
+                        text = subtitleParts.joinToString(" • "),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }

@@ -44,6 +44,26 @@ class SettingsRepository(context: Context) {
             isGpsDetected = prefs.getBoolean(KEY_LOC_IS_GPS, false)
         )
 
+        val legacySilentMinutes = prefs.getInt(KEY_AUTO_SILENT_MINUTES, 20)
+            .coerceIn(AppSettings.MIN_SILENT_MINUTES, AppSettings.MAX_SILENT_MINUTES)
+        val hasPerPrayerSilent = prefs.getBoolean(KEY_AUTO_SILENT_PER_PRAYER_MIGRATED, false)
+        val perPrayerDurations = PrayerType.ADHAN_PRAYERS.associateWith { prayer ->
+            val fallback = if (!hasPerPrayerSilent && legacySilentMinutes != 20) {
+                legacySilentMinutes
+            } else {
+                AppSettings.DEFAULT_SILENT_DURATIONS[prayer] ?: legacySilentMinutes
+            }
+            prefs.getInt(silentDurationKey(prayer), fallback)
+                .coerceIn(AppSettings.MIN_SILENT_MINUTES, AppSettings.MAX_SILENT_MINUTES)
+        }
+        val fridayFallback = if (!hasPerPrayerSilent && legacySilentMinutes > AppSettings.DEFAULT_FRIDAY_SILENT_MINUTES) {
+            legacySilentMinutes
+        } else {
+            AppSettings.DEFAULT_FRIDAY_SILENT_MINUTES
+        }
+        val fridaySilentMinutes = prefs.getInt(KEY_AUTO_SILENT_FRIDAY_MINUTES, fridayFallback)
+            .coerceIn(AppSettings.MIN_SILENT_MINUTES, AppSettings.MAX_SILENT_MINUTES)
+
         return AppSettings(
             location = location,
             calculationMethod = CalculationMethod.fromNameOrDefault(
@@ -58,14 +78,16 @@ class SettingsRepository(context: Context) {
             adhanEnabled = prefs.getBoolean(KEY_ADHAN_ENABLED, true),
             adhanEnabledPrayers = loadPrayerSet(KEY_ADHAN_PRAYERS, PrayerType.ADHAN_PRAYERS.toSet()),
             autoSilentEnabled = prefs.getBoolean(KEY_AUTO_SILENT_ENABLED, true),
-            autoSilentDurationMinutes = prefs.getInt(KEY_AUTO_SILENT_MINUTES, 20).coerceIn(5, 180),
+            autoSilentDurationMinutes = legacySilentMinutes,
+            autoSilentDurationsByPrayer = perPrayerDurations,
+            fridaySilentDurationMinutes = fridaySilentMinutes,
             autoSilentPrayers = loadPrayerSet(KEY_AUTO_SILENT_PRAYERS, PrayerType.ADHAN_PRAYERS.toSet()),
             restoreAlwaysLoud = prefs.getBoolean(KEY_RESTORE_ALWAYS_LOUD, true)
         )
     }
 
     private fun save(s: AppSettings) {
-        prefs.edit()
+        val editor = prefs.edit()
             .putString(KEY_LOC_COUNTRY, s.location.country)
             .putString(KEY_LOC_COUNTRY_CODE, s.location.countryCode)
             .putString(KEY_LOC_PROVINCE, s.location.province)
@@ -85,10 +107,21 @@ class SettingsRepository(context: Context) {
             .putStringSet(KEY_ADHAN_PRAYERS, s.adhanEnabledPrayers.map { it.name }.toSet())
             .putBoolean(KEY_AUTO_SILENT_ENABLED, s.autoSilentEnabled)
             .putInt(KEY_AUTO_SILENT_MINUTES, s.autoSilentDurationMinutes)
+            .putBoolean(KEY_AUTO_SILENT_PER_PRAYER_MIGRATED, true)
+            .putInt(
+                KEY_AUTO_SILENT_FRIDAY_MINUTES,
+                s.fridaySilentDurationMinutes.coerceIn(AppSettings.MIN_SILENT_MINUTES, AppSettings.MAX_SILENT_MINUTES)
+            )
             .putStringSet(KEY_AUTO_SILENT_PRAYERS, s.autoSilentPrayers.map { it.name }.toSet())
             .putBoolean(KEY_RESTORE_ALWAYS_LOUD, s.restoreAlwaysLoud)
-            .apply()
+
+        for (prayer in PrayerType.ADHAN_PRAYERS) {
+            editor.putInt(silentDurationKey(prayer), s.silentDurationFor(prayer))
+        }
+        editor.apply()
     }
+
+    private fun silentDurationKey(prayer: PrayerType): String = "${KEY_AUTO_SILENT_PRAYER_PREFIX}${prayer.name}"
 
     private fun loadPrayerSet(key: String, default: Set<PrayerType>): Set<PrayerType> {
         val raw = prefs.getStringSet(key, null) ?: return default
@@ -116,6 +149,9 @@ class SettingsRepository(context: Context) {
         private const val KEY_ADHAN_PRAYERS = "adhan_prayers"
         private const val KEY_AUTO_SILENT_ENABLED = "auto_silent_enabled"
         private const val KEY_AUTO_SILENT_MINUTES = "auto_silent_minutes"
+        private const val KEY_AUTO_SILENT_PER_PRAYER_MIGRATED = "auto_silent_per_prayer_migrated"
+        private const val KEY_AUTO_SILENT_PRAYER_PREFIX = "auto_silent_min_"
+        private const val KEY_AUTO_SILENT_FRIDAY_MINUTES = "auto_silent_min_FRIDAY"
         private const val KEY_AUTO_SILENT_PRAYERS = "auto_silent_prayers"
         private const val KEY_RESTORE_ALWAYS_LOUD = "restore_always_loud"
     }

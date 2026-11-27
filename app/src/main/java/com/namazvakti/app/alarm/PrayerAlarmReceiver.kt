@@ -17,6 +17,9 @@ import com.namazvakti.app.domain.KerahatType
 import com.namazvakti.app.model.PrayerType
 import com.namazvakti.app.service.AdhanPlaybackService
 import com.namazvakti.app.widget.PrayerWidgetProvider
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.ZoneId
 
 class PrayerAlarmReceiver : BroadcastReceiver() {
 
@@ -154,12 +157,22 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
                 // Clear pre-prayer & ending kerahat countdown notifications immediately on prayer arrival
                 CountdownNotificationHelper.cancelPrayerCountdown(context, prayer)
 
-                // 1. Auto-silent at prayer arrival (silences ringtones/notifications, allows Alarm-stream Adhan)
+                // 1. Auto-silent at prayer arrival using this prayer's configured duration (Cuma override on Fridays)
+                val zone = runCatching { ZoneId.of(settings.location.timezoneId) }
+                    .getOrDefault(ZoneId.systemDefault())
+                val dayOfWeek = LocalDate.now(zone).dayOfWeek
+                val silentMinutes = settings.silentDurationFor(prayer, dayOfWeek)
+                val silentLabel = if (prayer == PrayerType.OGLE && dayOfWeek == DayOfWeek.FRIDAY) {
+                    "Cuma"
+                } else {
+                    prayer.displayName
+                }
+
                 val silenced = if (settings.autoSilentEnabled && prayer in settings.autoSilentPrayers) {
                     AutoSilentManager.enterSilentMode(
                         context = context,
-                        prayerName = prayer.displayName,
-                        durationSeconds = settings.autoSilentDurationMinutes * 60L
+                        prayerName = silentLabel,
+                        durationSeconds = silentMinutes * 60L
                     )
                 } else false
 
@@ -172,7 +185,7 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
                 // 3. If Adhan wasn't started, still notify prayer arrival clearly
                 if (!adhanStarted) {
                     val silentSuffix = if (silenced) {
-                        " Telefon ${settings.autoSilentDurationMinutes} dk sessize alındı."
+                        " Telefon $silentMinutes dk sessize alındı."
                     } else ""
                     postWarningNotification(
                         context = context,
